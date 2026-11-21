@@ -196,17 +196,11 @@ Interactive API documentation is available at `/docs` while the service is runni
 
 ## Capability-to-Code Map
 
-Exact line numbers will be frozen after the release-candidate evaluation so late safety fixes do not
-invalidate the submission map.
+The submission-grade [capability-to-code map](docs/CAPABILITY_MAP.md) ties every advanced feature,
+enforceable guardrail, evaluation claim, persistence boundary, and deployment claim to exact source
+lines, key classes/functions, and scoped verification notes.
 
-| Category | Claimed capability | Primary implementation evidence | Verification evidence |
-|---|---|---|---|
-| Advanced Feature 1 | Planning with self-correction | `workflow/graph.py`, `services/live.py` | `test_workflow_skeleton.py` and revision metrics |
-| Advanced Feature 2 | Iterative agentic RAG | `retrieval/fts.py`, `services/live.py` | Retrieval unit tests, source/citation graders |
-| Advanced Feature 3 | Persistent HITL approval | `workflow/graph.py`, `services/approval.py` | Approval, expiry, stale-context, restart, and replay tests |
-| Guardrails | Enforceable tool and mutation policy | `security/`, `diagnostics/engine.py`, `remediation/executor.py` | Unit tests plus adversarial traces |
-| Evaluation | Frozen benchmark and metrics | `evals/manifest.jsonl`, `evals/harness/` | Dated JSON/Markdown results |
-| Deployment | Single-container local application | `Dockerfile`, `compose.yaml`, `.github/workflows/ci.yml` | CI container build and final local rehearsal |
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the component and trust-boundary design, and
-[docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) for the delivery schedule and definition of done.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the component and trust-boundary design,
+[docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) for the delivery schedule and definition of done, and
+[docs/EVALUATION_REPORT.md](docs/EVALUATION_REPORT.md) for the evaluation protocol and pending live
+results.
