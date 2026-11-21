@@ -34,10 +34,10 @@ Cross-session storage is used for reliable application operation but is not clai
 ### Safety
 
 - File, path, tool, argument, row, runtime, and operation limits are enforced in code.
-- Secrets and sensitive values are redacted before model calls and logs.
+- Known credential-like secrets are redacted before model calls and logs; selected retrieval excerpts and bounded derived diagnostic values are still sent to the configured model.
 - Untrusted content cannot invoke a tool or bypass approval.
-- Three real prompt-injection attacks are executed and preserved with actual traces and mitigations.
-- The attack surfaces include a log, a retrieved runbook, and dataset cell content.
+- Four real prompt-injection attacks are executed and preserved with actual traces and mitigations.
+- The attack surfaces include a log, a retrieved runbook, dataset cell content, and an uploaded schema description.
 
 ### Evaluation
 
@@ -116,7 +116,7 @@ Exit criteria:
 - A non-developer can complete the entire workflow in the web UI.
 - Plan revision, retrieval refinement, citations, and guardrails are visible.
 - The evaluation harness exports reproducible JSON and Markdown results.
-- The three required attacks include exact inputs, actual traces, outcomes, and mitigations.
+- The four required attacks include exact inputs, actual traces, outcomes, and mitigations.
 
 ### Milestone 6: Packaging and submission artifacts
 
@@ -137,7 +137,7 @@ Exit criteria:
 | Nov 24-27 | Diagnostic tools, tool gateway, SQLite persistence, graph skeleton, fake provider, OpenAI provider, initial self-correction case. |
 | Nov 28-Dec 1 | Iterative FTS5 retrieval, evidence grading, citation tracking, investigation API, live trace UI. |
 | Dec 2-3 | Remediation DSL, preview, plan/source hashing, persistent HITL approval, working-copy execution, post-fix checks. |
-| Dec 4-5 | Complete guardrails, three adversarial attacks, full evaluation harness, UI integration. |
+| Dec 4-5 | Complete guardrails, four adversarial attacks, full evaluation harness, UI integration. |
 | Dec 6 | Run and freeze evaluation, analyze failures, repair only the highest-impact issues. |
 | Dec 7 | Container build, mounted-volume verification, CI, deployment and setup documentation. |
 | Dec 8 | Evaluation report, 10+ slide presentation, process log, capability-to-code map, demo script. |
@@ -185,7 +185,7 @@ The target demonstration is approximately seven minutes:
 4. Show a malicious artifact instruction being treated as untrusted data.
 5. Review the cited root cause and typed remediation preview.
 6. Approve the plan and show post-fix validation on a working copy.
-7. Close with aggregate evaluation metrics and the three adversarial cases.
+7. Close with aggregate evaluation metrics and the four adversarial cases.
 
 The demo dataset and API configuration are frozen after the December 6 evaluation run. No live external data source is required during recording.
 

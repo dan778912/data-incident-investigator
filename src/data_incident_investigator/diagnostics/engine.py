@@ -35,7 +35,7 @@ class DiagnosticEngine:
             if request.tool == DiagnosticTool.INSPECT_LOG_SIGNATURES:
                 metrics, summary, warnings = self._inspect_log(trusted_artifact_path, arguments)
             else:
-                frame = self._load_frame(trusted_artifact_path)
+                frame = self._load_frame(trusted_artifact_path, arguments)
                 metrics, summary, warnings = self._run_frame_tool(request.tool, frame, arguments)
         except (DiagnosticExecutionError, OSError, ValueError, KeyError, TypeError) as exc:
             return DiagnosticObservation(
@@ -54,10 +54,22 @@ class DiagnosticEngine:
             warnings=warnings,
         )
 
-    def _load_frame(self, path: Path) -> pd.DataFrame:
+    def _load_frame(self, path: Path, arguments: BaseModel) -> pd.DataFrame:
         suffix = path.suffix.lower()
         if suffix == ".csv":
-            return pd.read_csv(path, nrows=self._max_rows)
+            keep_default_na = True
+            na_values: list[str] | None = None
+            if isinstance(arguments, ProfileDatasetArgs):
+                keep_default_na = arguments.keep_default_na
+            elif isinstance(arguments, CheckNullRatioArgs):
+                keep_default_na = arguments.keep_default_na
+                na_values = arguments.na_values or None
+            return pd.read_csv(
+                path,
+                nrows=self._max_rows,
+                keep_default_na=keep_default_na,
+                na_values=na_values,
+            )
         if suffix == ".json":
             frame = pd.read_json(path)
             return frame.head(self._max_rows)
@@ -71,6 +83,8 @@ class DiagnosticEngine:
     ) -> tuple[dict[str, Any], str, list[str]]:
         if tool == DiagnosticTool.PROFILE_DATASET:
             assert isinstance(arguments, ProfileDatasetArgs)
+            if arguments.column is not None:
+                self._require_columns(frame, [arguments.column])
             sample = frame.head(arguments.sample_rows).astype(object)
             sample = sample.where(sample.notna(), "<NULL>")
             metrics = {
@@ -80,11 +94,25 @@ class DiagnosticEngine:
                 "dtypes": {str(column): str(dtype) for column, dtype in frame.dtypes.items()},
                 "sample": sample.to_dict("records"),
             }
+            if arguments.value_counts and arguments.column is not None:
+                series = frame[arguments.column]
+                rendered = series.astype("string").fillna("<NULL>")
+                rendered = rendered.mask(rendered == "", "<EMPTY>")
+                counts = rendered.value_counts(dropna=False).head(arguments.value_count_limit)
+                rendered_counts: dict[str, int] = {}
+                for value, count in counts.items():
+                    rendered_counts[str(value)[:200]] = int(count)
+                metrics["value_counts"] = {arguments.column: rendered_counts}
+                metrics["distinct_value_count"] = int(series.nunique(dropna=False))
             return metrics, f"Profiled {len(frame)} rows and {len(frame.columns)} columns.", []
 
         if tool == DiagnosticTool.CHECK_NULL_RATIO:
             assert isinstance(arguments, CheckNullRatioArgs)
-            columns = arguments.columns or [str(column) for column in frame.columns]
+            columns = (
+                [arguments.column]
+                if arguments.column is not None
+                else arguments.columns or [str(column) for column in frame.columns]
+            )
             self._require_columns(frame, columns)
             ratios = {column: float(frame[column].isna().mean()) for column in columns}
             exceeding = {

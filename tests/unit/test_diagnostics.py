@@ -81,6 +81,65 @@ def test_profile_and_quality_diagnostics(dataset: Path, artifact_id: UUID) -> No
     assert datetimes.metrics["parse_failure_count"] == 1
 
 
+def test_raw_value_profile_and_explicit_null_markers(
+    tmp_path: Path,
+    artifact_id: UUID,
+) -> None:
+    dataset = tmp_path / "markers.csv"
+    dataset.write_text(
+        "id,priority_code\n1,N/A\n2,NULL\n3,\n4,P1\n",
+        encoding="utf-8",
+    )
+    engine = DiagnosticEngine(PolicyGateway())
+
+    profile = engine.run(
+        _request(
+            DiagnosticTool.PROFILE_DATASET,
+            artifact_id,
+            {
+                "column": "priority_code",
+                "keep_default_na": False,
+                "value_counts": True,
+            },
+        ),
+        dataset,
+    )
+    restricted_nulls = engine.run(
+        _request(
+            DiagnosticTool.CHECK_NULL_RATIO,
+            artifact_id,
+            {
+                "column": "priority_code",
+                "keep_default_na": False,
+                "na_values": ["", "NULL"],
+            },
+        ),
+        dataset,
+    )
+    expanded_nulls = engine.run(
+        _request(
+            DiagnosticTool.CHECK_NULL_RATIO,
+            artifact_id,
+            {
+                "column": "priority_code",
+                "keep_default_na": False,
+                "na_values": ["", "NULL", "N/A"],
+            },
+        ),
+        dataset,
+    )
+
+    assert profile.success is True
+    assert profile.metrics["value_counts"]["priority_code"] == {
+        "N/A": 1,
+        "NULL": 1,
+        "<EMPTY>": 1,
+        "P1": 1,
+    }
+    assert restricted_nulls.metrics["null_ratios"]["priority_code"] == pytest.approx(0.5)
+    assert expanded_nulls.metrics["null_ratios"]["priority_code"] == pytest.approx(0.75)
+
+
 def test_log_signature_diagnostic(tmp_path: Path, artifact_id: UUID) -> None:
     path = tmp_path / "pipeline.log"
     path.write_text("timeout contacting source\nERROR duplicate key\n", encoding="utf-8")

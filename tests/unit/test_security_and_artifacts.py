@@ -151,6 +151,21 @@ def test_policy_validates_allowlisted_tool_arguments() -> None:
     with pytest.raises(PolicyViolation, match="invalid arguments"):
         gateway.validate_diagnostic_request(bad_request)
 
+    unexpected_request = request.model_copy(
+        update={"arguments": {"keys": ["customer_id"], "shell": "whoami"}}
+    )
+    with pytest.raises(PolicyViolation, match="extra_forbidden"):
+        gateway.validate_diagnostic_request(unexpected_request)
+
+    unbounded_profile = request.model_copy(
+        update={
+            "tool": DiagnosticTool.PROFILE_DATASET,
+            "arguments": {"value_counts": True},
+        }
+    )
+    with pytest.raises(PolicyViolation, match="requires one explicit column"):
+        gateway.validate_diagnostic_request(unbounded_profile)
+
 
 def test_approval_is_bound_to_plan_hash_source_hash_and_nonce() -> None:
     gateway = PolicyGateway()

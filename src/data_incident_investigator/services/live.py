@@ -12,18 +12,33 @@ from pathlib import Path
 from typing import Any, ClassVar, Literal, cast
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
-from pydantic import BaseModel, Field, TypeAdapter, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
 from data_incident_investigator.diagnostics.engine import DiagnosticEngine
 from data_incident_investigator.domain.artifacts import ArtifactKind, StoredArtifact
 from data_incident_investigator.domain.causes import RootCauseCode
-from data_incident_investigator.domain.diagnostics import DiagnosticRequest, DiagnosticTool
+from data_incident_investigator.domain.diagnostics import (
+    CheckDatetimeParseArgs,
+    CheckDuplicateKeysArgs,
+    CheckNullRatioArgs,
+    CheckTypeConformanceArgs,
+    DiagnosticRequest,
+    DiagnosticTool,
+    InspectLogSignaturesArgs,
+    ProfileDatasetArgs,
+)
 from data_incident_investigator.domain.remediation import (
     ApprovalDecision,
+    CastColumn,
+    DropDuplicates,
+    FillMissing,
+    NormalizeString,
+    ParseDatetime,
     PostconditionKind,
     PostFixCheck,
     RemediationOperation,
     RemediationPlan,
+    RenameColumn,
 )
 from data_incident_investigator.llm.base import StructuredModelProvider
 from data_incident_investigator.remediation.executor import (
@@ -72,16 +87,76 @@ class EvidenceAssessmentDraft(BaseModel):
     reason: str = Field(min_length=1, max_length=800)
 
 
-class PlannedDiagnostic(BaseModel):
-    tool: DiagnosticTool
-    artifact_id: UUID
-    arguments_json: str = Field(min_length=2, max_length=2000)
+class _PlannedDiagnosticBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
-    def arguments(self) -> dict[str, Any]:
-        value = json.loads(self.arguments_json)
-        if not isinstance(value, dict):
-            raise ValueError("diagnostic arguments_json must decode to an object")
-        return cast(dict[str, Any], value)
+    artifact_id: UUID
+
+
+class ProfileDatasetDiagnostic(_PlannedDiagnosticBase):
+    tool: Literal[DiagnosticTool.PROFILE_DATASET]
+    arguments: ProfileDatasetArgs
+
+
+class CheckNullRatioDiagnostic(_PlannedDiagnosticBase):
+    tool: Literal[DiagnosticTool.CHECK_NULL_RATIO]
+    arguments: CheckNullRatioArgs
+
+
+class CheckDuplicateKeysDiagnostic(_PlannedDiagnosticBase):
+    tool: Literal[DiagnosticTool.CHECK_DUPLICATE_KEYS]
+    arguments: CheckDuplicateKeysArgs
+
+
+class ExpectedTypeDraft(BaseModel):
+    """OpenAI-compatible representation of one expected column type."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    column: str = Field(min_length=1, max_length=128)
+    expected_type: Literal["integer", "float", "boolean", "datetime", "string"]
+
+
+class CheckTypeConformanceDraftArgs(BaseModel):
+    """Model-facing type expectations without an unsupported free-form mapping."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expectations: list[ExpectedTypeDraft] = Field(min_length=1, max_length=50)
+
+    @model_validator(mode="after")
+    def columns_must_be_unique_and_specific(self) -> CheckTypeConformanceDraftArgs:
+        columns = [item.column for item in self.expectations]
+        if any(not column.strip() or column == "*" for column in columns):
+            raise ValueError("type-conformance checks require explicit column names")
+        if len(columns) != len(set(columns)):
+            raise ValueError("type-conformance columns must be unique")
+        return self
+
+
+class CheckTypeConformanceDiagnostic(_PlannedDiagnosticBase):
+    tool: Literal[DiagnosticTool.CHECK_TYPE_CONFORMANCE]
+    arguments: CheckTypeConformanceDraftArgs
+
+
+class CheckDatetimeParseDiagnostic(_PlannedDiagnosticBase):
+    tool: Literal[DiagnosticTool.CHECK_DATETIME_PARSE]
+    arguments: CheckDatetimeParseArgs
+
+
+class InspectLogSignaturesDiagnostic(_PlannedDiagnosticBase):
+    tool: Literal[DiagnosticTool.INSPECT_LOG_SIGNATURES]
+    arguments: InspectLogSignaturesArgs
+
+
+type PlannedDiagnostic = (
+    ProfileDatasetDiagnostic
+    | CheckNullRatioDiagnostic
+    | CheckDuplicateKeysDiagnostic
+    | CheckTypeConformanceDiagnostic
+    | CheckDatetimeParseDiagnostic
+    | InspectLogSignaturesDiagnostic
+)
 
 
 class HypothesisDraft(BaseModel):
@@ -103,12 +178,49 @@ class VerificationDraft(BaseModel):
     reason: str = Field(min_length=1, max_length=1200)
 
 
+class ReplacementDraft(BaseModel):
+    """One model-authored value replacement in the bounded remediation DSL."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    from_value: str = Field(max_length=1000)
+    to_value: str = Field(max_length=1000)
+
+
+class ReplaceValuesDraft(BaseModel):
+    """OpenAI-compatible list representation of a runtime replacement mapping."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    op: Literal["replace_values"] = "replace_values"
+    column: str
+    replacements: list[ReplacementDraft] = Field(min_length=1, max_length=50)
+
+    @model_validator(mode="after")
+    def source_values_must_be_unique(self) -> ReplaceValuesDraft:
+        source_values = [item.from_value for item in self.replacements]
+        if len(source_values) != len(set(source_values)):
+            raise ValueError("replacement source values must be unique")
+        return self
+
+
+type RemediationOperationDraft = (
+    RenameColumn
+    | CastColumn
+    | FillMissing
+    | DropDuplicates
+    | ParseDatetime
+    | NormalizeString
+    | ReplaceValuesDraft
+)
+
+
 class RemediationDraft(BaseModel):
     disposition: Literal["automatic_fix", "manual_escalation"] = "automatic_fix"
     title: str = Field(min_length=1, max_length=200)
     explanation: str = Field(min_length=1, max_length=2000)
     source_artifact_id: UUID
-    operations: list[RemediationOperation] = Field(default_factory=list, max_length=5)
+    operations: list[RemediationOperationDraft] = Field(default_factory=list, max_length=5)
     expected_effects: list[str] = Field(min_length=1, max_length=10)
     required_post_checks: list[str] = Field(min_length=1, max_length=20)
     citation_ids: list[str] = Field(min_length=1, max_length=20)
@@ -435,7 +547,9 @@ class LiveReasoningService:
             task=(
                 "Create up to four falsifiable hypotheses. Select a validated artifact identifier "
                 "from metadata and one allowlisted read-only diagnostic for each hypothesis. "
-                "arguments_json must be a JSON object accepted by that diagnostic."
+                "Use only the typed arguments defined for the selected diagnostic. For literal CSV "
+                "semantics, profile one explicit column with keep_default_na=false and bounded "
+                "value_counts, or compare null ratios with explicit na_values."
             ),
             payload={"incident_summary": incident_summary, "untrusted_evidence": evidence},
             max_output_tokens=3000,
@@ -455,7 +569,8 @@ class LiveReasoningService:
             HypothesesDraft,
             task=(
                 "Revise the failed hypotheses using observed diagnostics. Do not repeat a check "
-                "that was already disproven. arguments_json must be a valid JSON object."
+                "that was already disproven. Use only the typed arguments defined for the selected "
+                "diagnostic and choose a materially different check."
             ),
             payload={
                 "incident_summary": incident_summary,
@@ -531,11 +646,22 @@ class LiveReasoningService:
             if not set(item.evidence_ids).issubset(available_evidence):
                 raise ValueError("hypothesis cites evidence that was not retrieved")
             seen.add(item.hypothesis_id)
+            arguments = item.diagnostic.arguments.model_dump(
+                mode="json",
+                exclude_none=True,
+            )
+            if isinstance(item.diagnostic, CheckTypeConformanceDiagnostic):
+                arguments = CheckTypeConformanceArgs(
+                    expected_types={
+                        expectation.column: expectation.expected_type
+                        for expectation in item.diagnostic.arguments.expectations
+                    },
+                ).model_dump(mode="json")
             action = json.dumps(
                 {
                     "tool": item.diagnostic.tool.value,
                     "artifact_id": str(item.diagnostic.artifact_id),
-                    "arguments": item.diagnostic.arguments(),
+                    "arguments": arguments,
                 },
                 allow_nan=False,
                 sort_keys=True,
@@ -693,10 +819,26 @@ class LiveRemediationService:
             }
         if source.kind != ArtifactKind.DATASET:
             raise ValueError("automatic remediation source must be a dataset artifact")
+        operation_payloads: list[dict[str, Any]] = []
+        for draft_operation in draft.operations:
+            if isinstance(draft_operation, ReplaceValuesDraft):
+                operation_payloads.append(
+                    {
+                        "op": draft_operation.op,
+                        "column": draft_operation.column,
+                        "mapping": {
+                            replacement.from_value: replacement.to_value
+                            for replacement in draft_operation.replacements
+                        },
+                    }
+                )
+            else:
+                operation_payloads.append(draft_operation.model_dump(mode="json"))
+        runtime_operations = _OPERATIONS.validate_python(operation_payloads)
         plan = RemediationPlan(
             source_artifact_id=source.artifact_id,
             source_sha256=source.sha256,
-            operations=draft.operations,
+            operations=runtime_operations,
             expected_effects=draft.expected_effects,
             required_post_checks=draft.required_post_checks,
             citation_ids=draft.citation_ids,
@@ -705,8 +847,8 @@ class LiveRemediationService:
         self._policy.validate_plan(plan)
         assert plan.plan_hash is not None
         operations: list[PatchOperation] = []
-        for operation in plan.operations:
-            dumped = operation.model_dump(mode="json")
+        for runtime_operation in plan.operations:
+            dumped = runtime_operation.model_dump(mode="json")
             operation_name = dumped.pop("op")
             operations.append(
                 cast(

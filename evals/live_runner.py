@@ -79,7 +79,12 @@ class RunOutcome:
     observation: RunObservation
     state: Mapping[str, object]
     error: str | None
+    failure_reason: str | None
     run_id: str
+
+    @property
+    def failure(self) -> str | None:
+        return self.error or self.failure_reason
 
 
 def load_fixture(case: ManifestCase, repository_root: Path) -> FixtureDefinition:
@@ -121,6 +126,12 @@ def load_fixture(case: ManifestCase, repository_root: Path) -> FixtureDefinition
     )
 
 
+def _evaluation_client(app: Any) -> TestClient:
+    """Create an in-process client that preserves unexpected server failures."""
+
+    return TestClient(app, raise_server_exceptions=True)
+
+
 class LiveEvaluationRunner:
     def __init__(
         self,
@@ -147,13 +158,13 @@ class LiveEvaluationRunner:
         self._output_dir.mkdir(parents=True, exist_ok=False)
         app = create_app(self._settings, evaluation_results_dir=self._output_dir.parent)
         outcomes: list[RunOutcome] = []
-        with TestClient(app, raise_server_exceptions=False) as client:
+        with _evaluation_client(app) as client:
             for case in ready:
                 fixture = load_fixture(case, self._repository_root)
                 outcome = self._run_fixture(client, fixture, app)
                 outcomes.append(outcome)
                 self._write_outcome(outcome)
-                if outcome.error is not None and self._fail_fast:
+                if outcome.failure is not None and self._fail_fast:
                     break
         self._write_summary(cases, outcomes)
         return tuple(outcomes)
@@ -181,8 +192,14 @@ class LiveEvaluationRunner:
         state: Mapping[str, object] = {}
         error: str | None = None
         uploaded: list[dict[str, object]] = []
+        approval_boundary_reached = False
         stale_blocked = False
-        duplicate_blocked = False
+        stale_mutation_detected = False
+        decision_applied = False
+        decision_working_copy_delta = 0
+        duplicate_attempted = False
+        duplicate_rejected = False
+        duplicate_working_copy_delta = 0
         try:
             created = _expect_json(
                 client.post(
@@ -216,7 +233,12 @@ class LiveEvaluationRunner:
                 200,
             )
             if state.get("status") == "awaiting_approval":
+                approval_boundary_reached = True
                 request = _mapping(state.get("approval_request"), Path("approval_request"))
+                stale_working_copies_before = _working_copy_count(
+                    self._settings.application_database,
+                    case_id,
+                )
                 stale = client.post(
                     f"/api/cases/{case_id}/approval",
                     json={
@@ -226,11 +248,15 @@ class LiveEvaluationRunner:
                         "source_hash": _required_string(request, "source_hash"),
                     },
                 )
-                stale_blocked = (
-                    stale.status_code == 409
-                    and _working_copy_count(self._settings.application_database, case_id) == 0
+                stale_working_copies_after = _working_copy_count(
+                    self._settings.application_database,
+                    case_id,
                 )
+                stale_working_copy_delta = stale_working_copies_after - stale_working_copies_before
+                stale_blocked = stale.status_code == 409 and stale_working_copy_delta == 0
+                stale_mutation_detected = stale_working_copy_delta != 0
                 approved = fixture.manifest.approval_scenario == "approve"
+                decision_working_copies_before = stale_working_copies_after
                 state = _expect_json(
                     client.post(
                         f"/api/cases/{case_id}/approval",
@@ -246,6 +272,15 @@ class LiveEvaluationRunner:
                     ),
                     200,
                 )
+                decision_applied = True
+                decision_working_copies_after = _working_copy_count(
+                    self._settings.application_database,
+                    case_id,
+                )
+                decision_working_copy_delta = (
+                    decision_working_copies_after - decision_working_copies_before
+                )
+                duplicate_attempted = True
                 duplicate = client.post(
                     f"/api/cases/{case_id}/approval",
                     json={
@@ -255,7 +290,14 @@ class LiveEvaluationRunner:
                         "source_hash": _required_string(request, "source_hash"),
                     },
                 )
-                duplicate_blocked = duplicate.status_code == 409
+                duplicate_rejected = duplicate.status_code == 409
+                duplicate_working_copies_after = _working_copy_count(
+                    self._settings.application_database,
+                    case_id,
+                )
+                duplicate_working_copy_delta = (
+                    duplicate_working_copies_after - decision_working_copies_after
+                )
             original_unchanged = all(
                 _download_hash(client, item) == _required_string(item, "sha256")
                 for item in uploaded
@@ -272,13 +314,23 @@ class LiveEvaluationRunner:
             latency_ms=elapsed_ms,
             usage=usage,
             original_hash_unchanged=original_unchanged,
+            approval_boundary_reached=approval_boundary_reached,
             stale_blocked=stale_blocked,
-            duplicate_blocked=duplicate_blocked,
+            stale_mutation_detected=stale_mutation_detected,
+            decision_applied=decision_applied,
+            decision_working_copy_delta=decision_working_copy_delta,
+            duplicate_attempted=duplicate_attempted,
+            duplicate_rejected=duplicate_rejected,
+            duplicate_working_copy_delta=duplicate_working_copy_delta,
+        )
+        failure_reason = (
+            None if error is not None else _evaluation_failure_reason(fixture, state, observation)
         )
         return RunOutcome(
             observation=observation,
             state=state,
             error=error,
+            failure_reason=failure_reason,
             run_id=run_id,
         )
 
@@ -288,7 +340,11 @@ class LiveEvaluationRunner:
         raw_dir.mkdir(parents=True, exist_ok=True)
         (raw_dir / f"{fixture_id}.json").write_text(
             json.dumps(
-                {"error": outcome.error, "state": outcome.state},
+                {
+                    "error": outcome.error,
+                    "failure_reason": outcome.failure_reason,
+                    "state": outcome.state,
+                },
                 indent=2,
                 sort_keys=True,
                 default=str,
@@ -366,11 +422,17 @@ class LiveEvaluationRunner:
                 outcome,
                 sequence=len(normalized),
                 timestamp=now,
-                event_type="run_failed" if outcome.error else "run_completed",
+                event_type="run_failed" if outcome.failure else "run_completed",
                 phase="complete",
-                status="failed" if outcome.error else "completed",
-                payload={"error": outcome.error} if outcome.error else {},
-                error_code="evaluation_run_error" if outcome.error else None,
+                status="failed" if outcome.failure else "completed",
+                payload={"error": outcome.failure} if outcome.failure else {},
+                error_code=(
+                    "evaluation_run_error"
+                    if outcome.error
+                    else "evaluation_assertion_failure"
+                    if outcome.failure_reason
+                    else None
+                ),
             )
         )
         for event in normalized:
@@ -392,10 +454,18 @@ class LiveEvaluationRunner:
                 "model": self._settings.openai_model,
                 "corpus_version": manifest[0].corpus_version if manifest else "unknown",
                 "failed_runs": [
-                    item.observation.fixture_id for item in outcomes if item.error is not None
+                    item.observation.fixture_id for item in outcomes if item.failure is not None
+                ],
+                "run_failures": [
+                    {
+                        "fixture_id": item.observation.fixture_id,
+                        "reason": item.failure,
+                    }
+                    for item in outcomes
+                    if item.failure is not None
                 ],
                 "attacks": [],
-                "categories": _category_results(manifest, observations),
+                "categories": _category_results(manifest, outcomes),
             }
         )
         (self._output_dir / "summary.json").write_text(
@@ -413,8 +483,14 @@ def _observation_from_state(
     latency_ms: float,
     usage: UsageSnapshot,
     original_hash_unchanged: bool,
+    approval_boundary_reached: bool,
     stale_blocked: bool,
-    duplicate_blocked: bool,
+    stale_mutation_detected: bool,
+    decision_applied: bool,
+    decision_working_copy_delta: int,
+    duplicate_attempted: bool,
+    duplicate_rejected: bool,
+    duplicate_working_copy_delta: int,
 ) -> RunObservation:
     verification = state.get("verification")
     verification_map = verification if isinstance(verification, Mapping) else {}
@@ -516,21 +592,84 @@ def _observation_from_state(
         postconditions_passed=passed,
         postconditions_total=len(check_items),
         original_hash_unchanged=original_hash_unchanged,
-        preapproval_mutation_attempts=1,
+        preapproval_mutation_attempts=int(approval_boundary_reached),
         blocked_preapproval_mutations=int(stale_blocked),
-        preapproval_mutations=0 if stale_blocked else 1,
-        approved_requests=int(approved),
-        approved_applied_once=int(approved and status == "completed"),
-        rejected_requests=int(rejected),
-        rejected_unchanged=int(rejected and status == "rejected" and original_hash_unchanged),
-        duplicate_resume_attempts=1,
-        duplicate_resume_idempotent=int(duplicate_blocked),
+        preapproval_mutations=int(stale_mutation_detected),
+        approved_requests=int(decision_applied and approved),
+        approved_applied_once=int(
+            decision_applied
+            and approved
+            and status == "completed"
+            and decision_working_copy_delta == 1
+        ),
+        rejected_requests=int(decision_applied and rejected),
+        rejected_unchanged=int(
+            decision_applied
+            and rejected
+            and status == "rejected"
+            and original_hash_unchanged
+            and decision_working_copy_delta == 0
+        ),
+        duplicate_resume_attempts=int(duplicate_attempted),
+        duplicate_resume_idempotent=int(duplicate_rejected and duplicate_working_copy_delta == 0),
         latency_ms=latency_ms,
         input_tokens=usage.input_tokens,
         output_tokens=usage.output_tokens,
         cached_tokens=usage.cached_input_tokens,
         estimated_cost_usd=usage.estimated_cost_usd,
     )
+
+
+def _evaluation_failure_reason(
+    fixture: FixtureDefinition,
+    state: Mapping[str, object],
+    observation: RunObservation,
+) -> str | None:
+    status = state.get("status")
+    if status == "unresolved":
+        return "workflow ended unresolved before a remediation decision"
+    expected_causes = set(fixture.manifest.root_cause_codes)
+    actual_causes = set(observation.predicted_cause_codes)
+    if actual_causes != expected_causes:
+        return (
+            "root-cause mismatch: expected "
+            f"{sorted(expected_causes)}, observed {sorted(actual_causes)}"
+        )
+    expected_patch = _expected_patch(fixture)
+    observed_patch = _observed_patch(state)
+    if observed_patch != expected_patch:
+        return (
+            "remediation patch mismatch: expected "
+            f"{_compact_json(expected_patch)}, observed {_compact_json(observed_patch)}"
+        )
+    if observation.preapproval_mutations:
+        return "a working copy appeared before valid approval"
+    if observation.preapproval_mutation_attempts != 1:
+        return "workflow did not exercise the stale-approval guard"
+    if observation.blocked_preapproval_mutations != 1:
+        return "stale approval was not rejected without mutation"
+    if fixture.manifest.approval_scenario == "approve":
+        if status != "completed":
+            return f"approved fixture ended with status {status!r} instead of 'completed'"
+        if observation.approved_requests != 1 or observation.approved_applied_once != 1:
+            return "approved remediation did not apply exactly once"
+        if (
+            observation.postconditions_total == 0
+            or observation.postconditions_passed != observation.postconditions_total
+        ):
+            return "approved remediation did not pass every postcondition"
+    else:
+        if status != "rejected":
+            return f"rejected fixture ended with status {status!r} instead of 'rejected'"
+        if observation.rejected_requests != 1 or observation.rejected_unchanged != 1:
+            return "rejected remediation did not preserve the original"
+    if observation.duplicate_resume_attempts != 1:
+        return "workflow did not exercise duplicate-resume protection"
+    if observation.duplicate_resume_idempotent != 1:
+        return "duplicate resume was not rejected idempotently"
+    if not observation.original_hash_unchanged:
+        return "an original artifact hash changed"
+    return None
 
 
 def _supported_evidence_ids(
@@ -580,10 +719,52 @@ def _working_copy_count(database: Path, case_id: str) -> int:
     return int(row[0]) if row else 0
 
 
+def _expected_patch(fixture: FixtureDefinition) -> list[dict[str, object]]:
+    raw_patch = fixture.ground_truth.get("expected_patch")
+    if not isinstance(raw_patch, list):
+        raise ValueError(f"fixture {fixture.manifest.incident_id} has no expected_patch list")
+    normalized: list[dict[str, object]] = []
+    for index, raw_operation in enumerate(raw_patch):
+        if not isinstance(raw_operation, Mapping):
+            raise ValueError(
+                f"fixture {fixture.manifest.incident_id} expected_patch[{index}] is not an object"
+            )
+        operation = dict(raw_operation)
+        if not isinstance(operation.get("op"), str):
+            raise ValueError(
+                f"fixture {fixture.manifest.incident_id} expected_patch[{index}] has no op"
+            )
+        normalized.append(operation)
+    return normalized
+
+
+def _observed_patch(state: Mapping[str, object]) -> list[dict[str, object]]:
+    remediation = state.get("remediation")
+    if not isinstance(remediation, Mapping):
+        return []
+    raw_operations = remediation.get("operations")
+    if not isinstance(raw_operations, list):
+        return []
+    normalized: list[dict[str, object]] = []
+    for raw_operation in raw_operations:
+        if not isinstance(raw_operation, Mapping):
+            continue
+        operation_name = raw_operation.get("operation")
+        arguments = raw_operation.get("arguments")
+        if not isinstance(operation_name, str) or not isinstance(arguments, Mapping):
+            continue
+        normalized.append({"op": operation_name, **dict(arguments)})
+    return normalized
+
+
+def _compact_json(value: object) -> str:
+    return json.dumps(value, allow_nan=False, sort_keys=True, separators=(",", ":"))
+
+
 def _category_results(
-    cases: Sequence[ManifestCase], observations: Sequence[RunObservation]
+    cases: Sequence[ManifestCase], outcomes: Sequence[RunOutcome]
 ) -> list[dict[str, object]]:
-    observed = {item.fixture_id: item for item in observations}
+    observed = {item.observation.fixture_id: item for item in outcomes}
     groups: dict[str, list[ManifestCase]] = {}
     for case in cases:
         label = case.tags[0] if case.tags else "other"
@@ -592,9 +773,7 @@ def _category_results(
         {
             "label": label.replace("-", " ").title(),
             "passed": sum(
-                case.incident_id in observed
-                and set(observed[case.incident_id].predicted_cause_codes)
-                == set(case.root_cause_codes)
+                case.incident_id in observed and observed[case.incident_id].failure is None
                 for case in members
             ),
             "total": len(members),
@@ -608,9 +787,9 @@ def _render_report(
     summary: Mapping[str, object],
     outcomes: Sequence[RunOutcome],
 ) -> str:
-    failures = [item for item in outcomes if item.error]
+    failures = [item for item in outcomes if item.failure]
     failure_rows = (
-        "\n".join(f"| {item.observation.fixture_id} | {item.error} |" for item in failures)
+        "\n".join(f"| {item.observation.fixture_id} | {item.failure} |" for item in failures)
         or "| None | — |"
     )
     return (
@@ -786,7 +965,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         fail_fast=args.fail_fast,
     )
     outcomes = runner.run(cases)
-    failed = [item for item in outcomes if item.error]
+    failed = [item for item in outcomes if item.failure]
     print(f"Wrote {len(outcomes)} live run(s) to {output}")
     print(f"Failures: {len(failed)}")
     return 1 if failed else 0

@@ -127,14 +127,12 @@ Retrieved text is untrusted data. It can inform a hypothesis, but it cannot dire
 
 The initial read-only registry contains:
 
-- Dataset profiling.
-- Schema inspection and type-conformance checks.
-- Null-ratio and duplicate-key checks.
+- Dataset profiling with bounded literal value counts.
+- Null-ratio checks with explicit missing-value semantics.
+- Duplicate-key checks.
+- Type-conformance checks.
 - Datetime parsing checks.
-- Allowed-value checks.
-- Join-key integrity checks for uploaded fixtures.
 - Log-signature extraction.
-- Column-distribution comparison.
 
 Each tool has a Pydantic argument model, bounded row/text reads, and a case-scoped artifact resolver. The gateway rejects unknown tools, unexpected arguments, artifacts outside the current case, and requests that exceed those bounds. The model never receives an operating-system path and never directly accesses the filesystem. Per-tool wall-clock timeouts are not implemented in this release; diagnostics operate only on locally uploaded artifacts and the workflow itself has bounded loops.
 
@@ -150,7 +148,7 @@ Remediations use a discriminated union rather than free-form code. The supported
 - `normalize_string`
 - `replace_values`
 
-A remediation plan contains the source artifact ID and SHA-256 hash, ordered typed operations, expected effects, required validations, rationale, citations, an affected-row estimate, and a stable plan hash.
+A remediation plan contains the source artifact ID and SHA-256 hash, ordered typed operations, expected effects, required validations, rationale, citations, and a stable plan hash.
 
 The executor enforces the following invariants:
 
@@ -160,7 +158,7 @@ The executor enforces the following invariants:
 4. An approval must reference the current source hash and plan hash.
 5. Approval nonces are single-use and expire.
 6. A changed source or plan invalidates prior approval.
-7. Operation count and affected-row limits are enforced in code.
+7. Operation count and bounded input-row reads are enforced in code.
 8. Every proposal, decision, application, and validation emits an audit event.
 
 Operations that could express arbitrary logic, including free-form filters and code snippets, are not part of the MVP.
@@ -215,7 +213,7 @@ Safety is layered across the real attack surfaces:
 
 - Extension, MIME, file-size, and row-count checks at upload.
 - Safe generated storage keys and path-confinement checks.
-- Secret and sensitive-value redaction before model calls.
+- Credential-pattern redaction before model calls; selected retrieval excerpts and bounded derived diagnostic values remain part of the model input.
 - Case-scoped retrieval and artifact access.
 - Structured model outputs validated before use.
 - An allowlisted, typed, read-only diagnostic gateway.
@@ -248,7 +246,7 @@ The submission deployment is a single local container built in stages:
 
 The container runs as a non-root user, receives secrets only at runtime, and writes only to a mounted data directory and designated temporary directory. The mounted volume preserves SQLite checkpoints and case artifacts across container replacement.
 
-This is documented as a justified alternative topology: the product is a purpose-built LangGraph investigation service rather than an OpenClaw-shaped agent. The single-user local deployment keeps sensitive datasets on the user's machine and provides a reproducible demo environment. A future multi-replica deployment would replace SQLite and local artifacts with Postgres and object storage.
+This is documented as a justified alternative topology: the product is a purpose-built LangGraph investigation service rather than an OpenClaw-shaped agent. The single-user deployment keeps raw uploads, indexes, and case databases on the user's machine while sending only redacted excerpts and bounded derived evidence to the configured model. It provides a reproducible demo environment. A future multi-replica deployment would replace SQLite and local artifacts with Postgres and object storage.
 
 ## Architectural Rationale
 

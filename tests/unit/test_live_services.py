@@ -12,13 +12,16 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from openai.lib._pydantic import to_strict_json_schema
 from pydantic import BaseModel
 
 from data_incident_investigator.diagnostics.engine import DiagnosticEngine
 from data_incident_investigator.domain.artifacts import ArtifactKind, StoredArtifact
 from data_incident_investigator.domain.cases import CreateCaseRequest, IncidentCase
 from data_incident_investigator.domain.causes import RootCauseCode
-from data_incident_investigator.domain.diagnostics import DiagnosticTool
+from data_incident_investigator.domain.diagnostics import (
+    DiagnosticTool,
+)
 from data_incident_investigator.domain.remediation import RenameColumn
 from data_incident_investigator.llm.base import StructuredResult, UsageRecord
 from data_incident_investigator.persistence import ApplicationRepository
@@ -31,14 +34,20 @@ from data_incident_investigator.security.paths import CasePathResolver
 from data_incident_investigator.security.policy import PolicyGateway
 from data_incident_investigator.services.live import (
     ArtifactCatalog,
+    CheckTypeConformanceDiagnostic,
+    CheckTypeConformanceDraftArgs,
+    EvidenceAssessmentDraft,
+    ExpectedTypeDraft,
     HypothesesDraft,
     HypothesisDraft,
     LiveDiagnosticService,
     LiveReasoningService,
     LiveRemediationService,
     LiveRetrievalService,
-    PlannedDiagnostic,
+    QueryDraft,
     RemediationDraft,
+    ReplacementDraft,
+    ReplaceValuesDraft,
     VerificationDraft,
 )
 from data_incident_investigator.workflow.security import canonical_sha256
@@ -413,10 +422,17 @@ def test_live_reasoning_converts_typed_diagnostic_and_rejects_unknown_root_cause
                     statement="customer_id changed from integer to string.",
                     cause_code=RootCauseCode.SCHEMA_COLUMN_RENAMED,
                     evidence_ids=["artifact-metadata"],
-                    diagnostic=PlannedDiagnostic(
+                    diagnostic=CheckTypeConformanceDiagnostic(
                         tool=DiagnosticTool.CHECK_TYPE_CONFORMANCE,
                         artifact_id=artifact_id,
-                        arguments_json=json.dumps({"expected_types": {"customer_id": "integer"}}),
+                        arguments=CheckTypeConformanceDraftArgs(
+                            expectations=[
+                                ExpectedTypeDraft(
+                                    column="customer_id",
+                                    expected_type="integer",
+                                )
+                            ]
+                        ),
                     ),
                     expected_signal="customer_id has a string dtype",
                 )
@@ -429,6 +445,10 @@ def test_live_reasoning_converts_typed_diagnostic_and_rejects_unknown_root_cause
         ),
     )
     service = LiveReasoningService(provider)
+
+    diagnostic_schema = json.dumps(HypothesesDraft.model_json_schema(), sort_keys=True)
+    assert "keep_default_na" in diagnostic_schema
+    assert "expectations" in diagnostic_schema
 
     hypotheses = service.form_hypotheses(
         incident_summary="Rows disappeared after a schema deployment.",
@@ -453,6 +473,49 @@ def test_live_reasoning_converts_typed_diagnostic_and_rejects_unknown_root_cause
 
     with pytest.raises(ValueError, match="unknown root-cause"):
         service.verify_hypotheses(hypotheses=hypotheses, diagnostics=[], revision=0)
+
+
+def test_model_facing_schemas_use_openai_supported_strict_subset() -> None:
+    schemas = [
+        QueryDraft,
+        EvidenceAssessmentDraft,
+        HypothesesDraft,
+        VerificationDraft,
+        RemediationDraft,
+    ]
+    unsupported_keywords = {"oneOf", "discriminator", "minProperties", "maxProperties"}
+
+    def assert_supported(value: object) -> None:
+        if isinstance(value, dict):
+            assert not unsupported_keywords.intersection(value)
+            if value.get("type") == "object":
+                assert value.get("additionalProperties") is False
+                assert set(value.get("properties", {})) == set(value.get("required", []))
+            for child in value.values():
+                assert_supported(child)
+        elif isinstance(value, list):
+            for child in value:
+                assert_supported(child)
+
+    for model in schemas:
+        schema = to_strict_json_schema(model)
+        assert_supported(schema)
+    assert "anyOf" in json.dumps(to_strict_json_schema(HypothesesDraft), sort_keys=True)
+    assert "anyOf" in json.dumps(to_strict_json_schema(RemediationDraft), sort_keys=True)
+
+
+def test_type_conformance_draft_rejects_duplicate_or_wildcard_columns() -> None:
+    with pytest.raises(ValueError, match="unique"):
+        CheckTypeConformanceDraftArgs(
+            expectations=[
+                ExpectedTypeDraft(column="id", expected_type="integer"),
+                ExpectedTypeDraft(column="id", expected_type="string"),
+            ]
+        )
+    with pytest.raises(ValueError, match="explicit"):
+        CheckTypeConformanceDraftArgs(
+            expectations=[ExpectedTypeDraft(column="*", expected_type="string")]
+        )
 
 
 def test_live_diagnostics_enforce_allowlist_and_selected_artifact_boundary(
@@ -500,6 +563,27 @@ def test_live_diagnostics_enforce_allowlist_and_selected_artifact_boundary(
     assert result[0]["supports_hypothesis"] is True
     assert "exceeding_threshold" in result[0]["observed_signal"]
 
+    raw_profile = service.run(
+        hypotheses=[
+            _hypothesis(
+                selected.artifact_id,
+                tool=DiagnosticTool.PROFILE_DATASET.value,
+                arguments={
+                    "column": "value",
+                    "keep_default_na": False,
+                    "value_counts": True,
+                },
+            )
+        ],
+        artifact_ids=allowed_ids,
+    )
+    raw_signal = json.loads(raw_profile[0]["observed_signal"])
+    assert raw_signal["metrics"]["value_counts"]["value"] == {
+        "5": 1,
+        "<EMPTY>": 1,
+    }
+    assert "sample" not in raw_signal["metrics"]
+
     with pytest.raises(ValueError, match="outside the case"):
         service.run(
             hypotheses=[
@@ -533,7 +617,7 @@ def test_live_remediation_creates_and_registers_working_copy(tmp_path: Path) -> 
         case_id=case.case_id,
         kind=ArtifactKind.DATASET,
         filename="orders.csv",
-        content="legacy_id,value\n1,10\n2,20\n",
+        content="legacy_id,status\n1,completed\n2,pending\n",
     )
     original = source.storage_path.read_bytes()
     evidence_id = f"artifact:{source.artifact_id}"
@@ -542,9 +626,18 @@ def test_live_remediation_creates_and_registers_working_copy(tmp_path: Path) -> 
             title="Rename the legacy identifier",
             explanation="The retrieved schema requires the canonical id column.",
             source_artifact_id=source.artifact_id,
-            operations=[RenameColumn(from_name="legacy_id", to_name="id")],
-            expected_effects=["The dataset exposes the canonical id column."],
-            required_post_checks=["profile_dataset"],
+            operations=[
+                RenameColumn(from_name="legacy_id", to_name="id"),
+                ReplaceValuesDraft(
+                    column="status",
+                    replacements=[ReplacementDraft(from_value="completed", to_value="complete")],
+                ),
+            ],
+            expected_effects=[
+                "The dataset exposes the canonical id column.",
+                "The status vocabulary uses complete.",
+            ],
+            required_post_checks=["profile_dataset", "replace_values"],
             citation_ids=[evidence_id],
         )
     )
@@ -604,7 +697,10 @@ def test_live_remediation_creates_and_registers_working_copy(tmp_path: Path) -> 
     assert output.case_id == case.case_id
     assert output.kind == ArtifactKind.WORKING_COPY
     assert output.storage_path.is_relative_to(resolver.working_dir(case.case_id))
-    assert output.storage_path.read_text(encoding="utf-8").startswith("id,value")
+    output_text = output.storage_path.read_text(encoding="utf-8")
+    assert output_text.startswith("id,status")
+    assert "complete" in output_text
+    assert "completed" not in output_text
     assert result["validation_passed"] is True
     assert result["original_sha256"] == source.sha256
     assert result["output_sha256"] == _sha256(output.storage_path)
@@ -612,6 +708,7 @@ def test_live_remediation_creates_and_registers_working_copy(tmp_path: Path) -> 
     assert all(check["passed"] for check in result["checks"])
     assert {check["kind"] for check in result["checks"]} >= {
         "column_renamed",
+        "values_replaced",
         "original_unchanged",
         "output_readable",
         "output_hash_matches",

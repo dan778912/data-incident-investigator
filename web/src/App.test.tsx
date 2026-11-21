@@ -32,13 +32,13 @@ describe("Data Incident Investigator UI", () => {
     );
   });
 
-  it("renders quantitative evaluation and three adversarial results", async () => {
+  it("renders quantitative evaluation and four adversarial results", async () => {
     const user = userEvent.setup();
     render(<App />);
 
     await user.click(await screen.findByRole("button", { name: /^evaluation$/i }));
     expect(await screen.findByRole("heading", { name: /evaluation snapshot/i })).toBeVisible();
     expect(screen.getByText("91.7%")).toBeVisible();
-    expect(screen.getAllByText(/^(blocked|contained)$/i)).toHaveLength(3);
+    expect(screen.getAllByText(/^(blocked|contained)$/i)).toHaveLength(4);
   });
 });
