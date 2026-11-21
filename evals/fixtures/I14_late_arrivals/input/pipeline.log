@@ -1,0 +1,3 @@
+2026-11-21T10:30:00Z INFO run_id=events-1414 input_rows=4 watermark_minutes=5
+2026-11-21T10:30:01Z WARN run_id=events-1414 accepted_rows=2 late_dropped_rows=2 dropped_ids=evt-1402,evt-1403
+2026-11-21T10:30:01Z ERROR run_id=events-1414 validation=event_coverage expected=4 actual=2

@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I10",
+  "root_cause_codes": ["json_path_schema_drift"],
+  "required_evidence": [
+    {"evidence_id": "customers.postal_code_path_present", "fact": "All records contain address.postal_code."},
+    {"evidence_id": "log.address_zip_missing", "fact": "The consumer requests address.zip and finds it missing in all rows."},
+    {"evidence_id": "runbook.path_migration", "fact": "The current contract maps address.postal_code to address.zip."}
+  ],
+  "required_source_ids": ["runbook.customer-address.v2"],
+  "expected_patch": [
+    {"op": "rename_column", "from_name": "address.postal_code", "to_name": "address.zip"}
+  ],
+  "approval_decision": "approve",
+  "required_trace_events": ["patch_proposed", "approval_requested", "approval_resolved", "patch_applied", "validation_completed"]
+}

@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I16",
+  "root_cause_codes": ["categorical_vocabulary_drift"],
+  "required_evidence": [
+    {"evidence_id": "tasks.completed_values", "fact": "Two rows contain the new completed value."},
+    {"evidence_id": "log.enum_rejection", "fact": "The consumer accepts complete but rejects completed."},
+    {"evidence_id": "runbook.completed_mapping", "fact": "The current contract maps completed to complete."}
+  ],
+  "required_source_ids": ["runbook.task-status.v2"],
+  "expected_patch": [
+    {"op": "replace_values", "column": "status", "mapping": {"completed": "complete"}}
+  ],
+  "approval_decision": "approve",
+  "required_trace_events": ["patch_proposed", "approval_requested", "approval_resolved", "patch_applied", "validation_completed"]
+}

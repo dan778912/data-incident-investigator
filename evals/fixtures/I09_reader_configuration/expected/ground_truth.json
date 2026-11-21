@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I09",
+  "root_cause_codes": ["reader_encoding_delimiter"],
+  "required_evidence": [
+    {"evidence_id": "payments.semicolon_delimiter", "fact": "The file uses semicolons between four fields."},
+    {"evidence_id": "payments.utf8_name", "fact": "The file contains the valid UTF-8 name José."},
+    {"evidence_id": "log.reader_mismatch", "fact": "The pipeline uses comma/ASCII and parses one column with a replacement character."}
+  ],
+  "required_source_ids": ["runbook.payment-reader.v1"],
+  "expected_patch": [],
+  "approval_decision": "reject",
+  "remediation_disposition": "Escalate reader configuration: delimiter semicolon, encoding UTF-8.",
+  "required_trace_events": ["patch_proposed", "approval_requested", "approval_resolved"]
+}

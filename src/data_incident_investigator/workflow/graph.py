@@ -151,6 +151,8 @@ def build_investigation_graph(
             artifact_ids=state["artifact_ids"],
         )
         evidence = _json_clone(records, label="retrieved evidence")
+        for record in evidence:
+            record["retrieval_round"] = round_number
         return {
             "retrieval_round": round_number,
             "evidence": evidence,
@@ -317,6 +319,10 @@ def build_investigation_graph(
                     "Revised the diagnostic plan after a failed verification.",
                     plan_revision=revision,
                     evidence_count=len(state.get("evidence", [])),
+                    invalidated_hypothesis_ids=[
+                        item["hypothesis_id"] for item in state["hypotheses"]
+                    ],
+                    replacement_hypothesis_ids=[item["hypothesis_id"] for item in hypotheses],
                 )
             ],
         }
@@ -329,8 +335,13 @@ def build_investigation_graph(
             diagnostics=state.get("diagnostics", []),
         )
         proposal = _json_clone(record, label="remediation proposal")
-        if not proposal.get("operations"):
+        disposition = proposal.get("disposition", "automatic_fix")
+        if disposition not in {"automatic_fix", "manual_escalation"}:
+            raise WorkflowStateError("remediation proposal has an unknown disposition")
+        if disposition == "automatic_fix" and not proposal.get("operations"):
             raise WorkflowStateError("remediation proposal must contain an allowlisted operation")
+        if disposition == "manual_escalation" and proposal.get("operations"):
+            raise WorkflowStateError("manual escalation cannot contain mutation operations")
         return {
             "remediation": proposal,
             "trace": [
@@ -338,6 +349,7 @@ def build_investigation_graph(
                     "propose_remediation",
                     "Prepared a constrained remediation proposal for human review.",
                     proposal_id=proposal["proposal_id"],
+                    disposition=disposition,
                     operation_count=len(proposal["operations"]),
                 )
             ],
@@ -409,8 +421,12 @@ def build_investigation_graph(
 
     def route_after_approval(
         state: InvestigationState,
-    ) -> Literal["apply_remediation", "finalize_rejected"]:
-        return "apply_remediation" if state["approval"]["approved"] else "finalize_rejected"
+    ) -> Literal["apply_remediation", "finalize_rejected", "finalize_unresolved"]:
+        if not state["approval"]["approved"]:
+            return "finalize_rejected"
+        if state["remediation"].get("disposition") == "manual_escalation":
+            return "finalize_unresolved"
+        return "apply_remediation"
 
     def apply_remediation(state: InvestigationState) -> dict[str, object]:
         record = services.remediation.apply(
@@ -421,6 +437,13 @@ def build_investigation_graph(
         result = _json_clone(record, label="remediation result")
         if result.get("applied") is not True:
             raise WorkflowStateError("approved remediation did not report a successful application")
+        checks = result.get("checks")
+        if result.get("validation_passed") is not True or not isinstance(checks, list):
+            raise WorkflowStateError("approved remediation did not pass post-fix validation")
+        if not checks or any(
+            not isinstance(item, dict) or item.get("passed") is not True for item in checks
+        ):
+            raise WorkflowStateError("approved remediation contains a failed post-fix check")
         return {
             "remediation_result": result,
             "status": "completed",
@@ -429,6 +452,7 @@ def build_investigation_graph(
                     "apply_remediation",
                     "Applied the approved remediation to a working copy.",
                     output_artifact_id=result.get("output_artifact_id"),
+                    validation_check_count=len(checks),
                 )
             ],
         }
@@ -450,7 +474,9 @@ def build_investigation_graph(
             "trace": [
                 _event(
                     "finalize_unresolved",
-                    "Stopped safely after reaching the hypothesis revision limit.",
+                    "Stopped safely for bounded manual follow-up."
+                    if state.get("remediation", {}).get("disposition") == "manual_escalation"
+                    else "Stopped safely after reaching the hypothesis revision limit.",
                     plan_revision=state["plan_revision"],
                 )
             ],
@@ -511,6 +537,7 @@ def build_investigation_graph(
         {
             "apply_remediation": "apply_remediation",
             "finalize_rejected": "finalize_rejected",
+            "finalize_unresolved": "finalize_unresolved",
         },
     )
     builder.add_edge("apply_remediation", END)

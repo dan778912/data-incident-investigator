@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I03",
+  "root_cause_codes": ["numeric_currency_type_drift"],
+  "required_evidence": [
+    {"evidence_id": "log.amount_type_error", "fact": "The pipeline inferred amount_usd as string instead of float."},
+    {"evidence_id": "orders.currency_symbols", "fact": "Every amount begins with a dollar symbol."},
+    {"evidence_id": "diagnostic.amount_non_numeric", "fact": "Numeric type conformance fails for amount_usd."}
+  ],
+  "required_source_ids": ["runbook.currency-ingestion.v1"],
+  "expected_patch": [
+    {"op": "replace_values", "column": "amount_usd", "mapping": {"$12.50": "12.50", "$8.00": "8.00", "$105.25": "105.25"}},
+    {"op": "cast_column", "column": "amount_usd", "target_type": "float", "invalid_policy": "reject"}
+  ],
+  "approval_decision": "approve",
+  "required_trace_events": ["patch_proposed", "approval_requested", "approval_resolved", "patch_applied", "validation_completed"]
+}

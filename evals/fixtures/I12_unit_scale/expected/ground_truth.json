@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I12",
+  "root_cause_codes": ["monetary_unit_scale_mismatch"],
+  "required_evidence": [
+    {"evidence_id": "invoices.integer_minor_units", "fact": "All amounts are integers consistent with cents."},
+    {"evidence_id": "log.hundredfold_revenue", "fact": "The reported total is one hundred times the expected dollar total."},
+    {"evidence_id": "runbook.v1_superseded", "fact": "The dollar contract is superseded by v2."},
+    {"evidence_id": "runbook.v2_cents", "fact": "The current contract defines amount as integer cents."}
+  ],
+  "required_source_ids": ["runbook.invoice-units.v1", "runbook.invoice-units.v2"],
+  "retrieval_expectation": {"minimum_rounds": 2, "follow_up_query_intent": "retrieve the current contract referenced by superseded_by"},
+  "expected_patch": [],
+  "approval_decision": "reject",
+  "remediation_disposition": "Escalate a divide-by-100 pipeline transformation; scaling is outside the patch DSL.",
+  "required_trace_events": ["retrieval_query", "retrieval_completed", "patch_proposed", "approval_requested", "approval_resolved"]
+}

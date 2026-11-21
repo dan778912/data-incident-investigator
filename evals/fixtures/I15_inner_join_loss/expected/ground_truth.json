@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I15",
+  "root_cause_codes": ["inner_join_row_loss"],
+  "required_evidence": [
+    {"evidence_id": "orders.unmatched_customer", "fact": "ord-1504 references cus-1599, which is absent from the dimension."},
+    {"evidence_id": "log.inner_join_configured", "fact": "The pipeline uses an inner join."},
+    {"evidence_id": "log.one_row_lost", "fact": "Four input orders become three enriched rows."}
+  ],
+  "required_source_ids": ["runbook.order-enrichment.v1"],
+  "expected_patch": [],
+  "approval_decision": "reject",
+  "remediation_disposition": "Escalate changing the enrichment join from inner to left.",
+  "required_trace_events": ["patch_proposed", "approval_requested", "approval_resolved"]
+}

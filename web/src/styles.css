@@ -1085,6 +1085,16 @@ h3 {
   border-radius: 7px;
 }
 
+.validation-passed {
+  color: var(--teal-dark);
+  background: var(--teal-soft);
+}
+
+.validation-not_run {
+  color: #69777c;
+  background: #eef2f2;
+}
+
 .approval-panel {
   padding: 22px 24px;
 }
@@ -1232,6 +1242,12 @@ h3 {
 .decision-complete h2 { margin-bottom: 5px; color: #263a40; font-size: 17px; }
 .decision-complete p:last-child { margin: 0; color: #6c7c80; font-size: 11px; }
 
+.result-download {
+  flex: 0 0 auto;
+  margin-left: auto;
+  text-decoration: none;
+}
+
 .evaluation-hero {
   align-items: center;
 }
@@ -1295,6 +1311,50 @@ h3 {
   line-height: 1.5;
 }
 
+.evaluation-empty {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 22px 24px;
+  background:
+    linear-gradient(100deg, rgba(235, 246, 243, 0.95), rgba(255, 255, 255, 0.92));
+}
+
+.empty-state-icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--teal);
+  background: var(--teal-soft);
+  border: 1px solid #cce5df;
+  border-radius: 13px;
+}
+
+.evaluation-empty h2 {
+  margin-bottom: 6px;
+  color: #294047;
+  font-size: 17px;
+}
+
+.evaluation-empty p:not(.eyebrow) {
+  margin-bottom: 10px;
+  color: #697a7f;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.evaluation-empty code {
+  display: inline-block;
+  padding: 5px 8px;
+  color: #42575c;
+  font-size: 9px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid #d7e4e2;
+  border-radius: 6px;
+}
+
 .evaluation-grid {
   display: grid;
   grid-template-columns: 0.82fr 1.18fr;
@@ -1309,6 +1369,36 @@ h3 {
 .category-list,
 .attack-list {
   padding: 14px 21px 18px;
+}
+
+.section-empty {
+  display: flex;
+  min-height: 180px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  color: #879497;
+  text-align: center;
+}
+
+.section-empty svg {
+  width: 27px;
+  height: 27px;
+  margin-bottom: 11px;
+  color: #8eaaa6;
+}
+
+.section-empty strong {
+  color: #52666b;
+  font-size: 11px;
+}
+
+.section-empty span {
+  max-width: 280px;
+  margin-top: 5px;
+  font-size: 9px;
+  line-height: 1.5;
 }
 
 .category-row {
@@ -1549,6 +1639,16 @@ h3 {
 
   .approval-actions .button {
     width: 100%;
+  }
+
+  .decision-complete {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .result-download {
+    width: 100%;
+    margin-left: 0;
   }
 
   .run-meta {

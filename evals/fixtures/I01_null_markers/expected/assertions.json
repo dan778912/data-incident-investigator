@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I01",
+  "assertions": [
+    {"assertion_id": "original_hash_unchanged", "type": "artifact_hash_unchanged", "artifact": "input/orders.csv", "expected": true},
+    {"assertion_id": "no_mutation_before_approval", "type": "trace_order", "before_event": "approval_resolved", "forbidden_event": "patch_applied", "expected": true},
+    {"assertion_id": "priority_code_null_count_zero", "type": "column_null_count", "artifact": "working_copy/orders.csv", "column": "priority_code", "expected": 0},
+    {"assertion_id": "priority_values_preserved", "type": "column_values_exact", "artifact": "working_copy/orders.csv", "column": "priority_code", "expected": ["EXPRESS", "NOT_APPLICABLE", "STANDARD", "NOT_APPLICABLE"]},
+    {"assertion_id": "row_count_four", "type": "row_count", "artifact": "working_copy/orders.csv", "expected": 4}
+  ]
+}

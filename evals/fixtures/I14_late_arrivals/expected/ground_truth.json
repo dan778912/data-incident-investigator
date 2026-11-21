@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I14",
+  "root_cause_codes": ["watermark_late_arrivals"],
+  "required_evidence": [
+    {"evidence_id": "events.lateness_distribution", "fact": "Two events arrive seven and ten minutes late; all are within fifteen minutes."},
+    {"evidence_id": "log.watermark_five_minutes", "fact": "The deployed watermark is five minutes."},
+    {"evidence_id": "log.two_late_drops", "fact": "The pipeline drops evt-1402 and evt-1403 as late."}
+  ],
+  "required_source_ids": ["runbook.event-watermark.v1"],
+  "expected_patch": [],
+  "approval_decision": "reject",
+  "remediation_disposition": "Escalate restoration of the event watermark to 15 minutes.",
+  "required_trace_events": ["patch_proposed", "approval_requested", "approval_resolved"]
+}

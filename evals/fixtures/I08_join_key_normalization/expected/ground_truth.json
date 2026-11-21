@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I08",
+  "root_cause_codes": ["join_key_normalization"],
+  "required_evidence": [
+    {"evidence_id": "orders.sku_whitespace", "fact": "Order SKU values contain whitespace and mixed casing."},
+    {"evidence_id": "products.canonical_skus", "fact": "The catalog contains all three canonical SKU values."},
+    {"evidence_id": "log.join_coverage_failure", "fact": "Only one of three orders matches before normalization."}
+  ],
+  "required_source_ids": ["runbook.join-keys.v1"],
+  "expected_patch": [
+    {"op": "normalize_string", "columns": ["sku"], "trim": true, "casefold": true, "unicode_form": "NFKC"}
+  ],
+  "approval_decision": "approve",
+  "remediation_artifact": "orders.csv",
+  "required_trace_events": ["patch_proposed", "approval_requested", "approval_resolved", "patch_applied", "validation_completed"]
+}

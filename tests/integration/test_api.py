@@ -52,6 +52,10 @@ def test_upload_validates_artifact_and_hides_storage_path(tmp_path: Path) -> Non
         assert "storage_path" not in artifact
         assert artifact["immutable"] is True
         assert client.get(f"/api/artifacts/{artifact['artifact_id']}").json() == artifact
+        downloaded = client.get(f"/api/artifacts/{artifact['artifact_id']}/download")
+        assert downloaded.status_code == 200
+        assert downloaded.content == b"customerId,name\n1,Ada\n"
+        assert "customers.csv" in downloaded.headers["content-disposition"]
 
 
 def test_upload_rejects_invalid_and_unknown_cases(tmp_path: Path) -> None:
@@ -134,6 +138,7 @@ def test_investigation_refines_replans_and_requires_bound_approval(tmp_path: Pat
         )
         assert approved.status_code == 200
         assert approved.json()["status"] == "completed"
+        assert approved.json()["approval"]["approved"] is True
         assert approved.json()["remediation_result"]["applied"] is True
         assert (
             client.post(

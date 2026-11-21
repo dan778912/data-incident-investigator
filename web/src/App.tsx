@@ -1,12 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
-  CircleHelp,
   Gauge,
-  LogOut,
   Menu,
   SearchCheck,
-  Settings,
   ShieldCheck,
   X
 } from "lucide-react";
@@ -25,7 +22,8 @@ import { NewIncidentForm } from "./components/NewIncidentForm";
 type View = "dashboard" | "investigation" | "evaluation";
 
 export function App() {
-  const api = useMemo(() => createApiClient(), []);
+  const apiMode = import.meta.env.VITE_API_MODE === "live" ? "live" : "mock";
+  const api = useMemo(() => createApiClient(apiMode), [apiMode]);
   const [view, setView] = useState<View>("dashboard");
   const [dashboard, setDashboard] = useState<DashboardData>();
   const [investigation, setInvestigation] = useState<Investigation>();
@@ -39,17 +37,23 @@ export function App() {
     api.getDashboard().then(setDashboard).catch((reason: Error) => setError(reason.message));
   }, [api]);
 
-  const navigate = async (next: View, caseId = "inc-1042") => {
+  const navigate = async (next: View, caseId?: string) => {
     setError(undefined);
     setSidebarOpen(false);
-    setView(next);
     try {
       if (next === "investigation") {
-        setInvestigation(await api.getInvestigation(caseId));
+        const selectedCaseId = caseId ?? investigation?.case.id ?? dashboard?.cases[0]?.id;
+        if (!selectedCaseId) {
+          setView("dashboard");
+          setError("Create an incident before opening the investigation workspace.");
+          return;
+        }
+        setInvestigation(await api.getInvestigation(selectedCaseId));
       }
       if (next === "evaluation") {
         setEvaluation(await api.getEvaluation());
       }
+      setView(next);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to load view");
     }
@@ -64,20 +68,14 @@ export function App() {
   const decide = async (decision: "approved" | "rejected") => {
     if (!investigation) return;
     setDeciding(true);
-    const approval = await api.decideApproval(investigation.approval.id, decision);
-    setInvestigation({
-      ...investigation,
-      approval,
-      case: {
-        ...investigation.case,
-        status: decision === "approved" ? "resolved" : "awaiting_approval"
-      },
-      validation:
-        decision === "approved"
-          ? { ...investigation.validation, status: "passed" }
-          : { ...investigation.validation, status: "not_run" }
-    });
-    setDeciding(false);
+    setError(undefined);
+    try {
+      setInvestigation(await api.decideApproval(investigation.approval.id, decision));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to record approval");
+    } finally {
+      setDeciding(false);
+    }
   };
 
   const navItems = [
@@ -121,12 +119,7 @@ export function App() {
           <strong>Controls active</strong>
           <span>Tools scoped · originals locked</span>
         </section>
-        <nav aria-label="Support navigation" className="secondary-nav">
-          <button><CircleHelp aria-hidden="true" size={18} /> Documentation</button>
-          <button><Settings aria-hidden="true" size={18} /> Settings</button>
-          <button><LogOut aria-hidden="true" size={18} /> Sign out</button>
-        </nav>
-        <div className="demo-badge"><span /> Demo data mode</div>
+        {apiMode === "mock" && <div className="demo-badge"><span /> Demo data mode</div>}
       </aside>
 
       <div className="main-column">
@@ -134,7 +127,13 @@ export function App() {
           <div>
             <span className="topbar-context">Solo capstone workspace</span>
             <span className="topbar-separator">/</span>
-            <strong>{view === "dashboard" ? "Overview" : view === "investigation" ? "Case inc-1042" : "Evaluation"}</strong>
+            <strong>
+              {view === "dashboard"
+                ? "Overview"
+                : view === "investigation"
+                  ? investigation?.case.id ?? "Investigation"
+                  : "Evaluation"}
+            </strong>
           </div>
           <div className="environment-chip"><span /> Local · protected</div>
         </header>

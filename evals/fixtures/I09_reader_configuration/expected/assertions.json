@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I09",
+  "assertions": [
+    {"assertion_id": "original_hash_unchanged", "type": "artifact_hash_unchanged", "artifact": "input/payments.csv", "expected": true},
+    {"assertion_id": "no_patch_applied", "type": "event_absent", "event_type": "patch_applied", "expected": true},
+    {"assertion_id": "no_working_copy_created", "type": "artifact_absent", "artifact": "working_copy/payments.csv", "expected": true},
+    {"assertion_id": "configuration_escalation_recorded", "type": "trace_contains", "field": "remediation_disposition", "value": "reader configuration", "expected": true}
+  ]
+}

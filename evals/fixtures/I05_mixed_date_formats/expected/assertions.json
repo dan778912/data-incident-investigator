@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I05",
+  "assertions": [
+    {"assertion_id": "original_hash_unchanged", "type": "artifact_hash_unchanged", "artifact": "input/events.csv", "expected": true},
+    {"assertion_id": "timestamps_parse_utc", "type": "column_values_exact", "artifact": "working_copy/events.csv", "column": "created_at", "expected": ["2026-11-21T10:00:00Z", "2026-11-21T10:05:00Z", "2026-11-21T10:10:00Z"]},
+    {"assertion_id": "datetime_failure_count_zero", "type": "datetime_parse_failure_count", "artifact": "working_copy/events.csv", "column": "created_at", "expected": 0},
+    {"assertion_id": "row_count_three", "type": "row_count", "artifact": "working_copy/events.csv", "expected": 3}
+  ]
+}

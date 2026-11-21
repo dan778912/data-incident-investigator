@@ -15,11 +15,15 @@ from data_incident_investigator.domain.remediation import (
     FillMissing,
     NormalizeString,
     ParseDatetime,
+    PostconditionKind,
     RemediationPlan,
     RenameColumn,
     ReplaceValues,
 )
-from data_incident_investigator.remediation.executor import RemediationExecutor
+from data_incident_investigator.remediation.executor import (
+    PostFixValidationError,
+    RemediationExecutor,
+)
 from data_incident_investigator.security.policy import PolicyGateway, PolicyViolation
 
 
@@ -78,6 +82,17 @@ def test_executor_applies_typed_plan_to_working_copy_only(tmp_path: Path) -> Non
     assert next(iter(frame.columns)) == "id"
     assert frame["amount"].isna().sum() == 0
     assert set(frame["status"]) == {"complete"}
+    assert all(check.passed for check in result.checks)
+    assert {check.kind for check in result.checks} >= {
+        PostconditionKind.COLUMN_RENAMED,
+        PostconditionKind.MISSING_VALUES_FILLED,
+        PostconditionKind.STRINGS_NORMALIZED,
+        PostconditionKind.VALUES_REPLACED,
+        PostconditionKind.DUPLICATES_REMOVED,
+        PostconditionKind.ORIGINAL_UNCHANGED,
+        PostconditionKind.OUTPUT_HASH_MATCHES,
+        PostconditionKind.OUTPUT_READABLE,
+    }
 
 
 def test_executor_casts_and_parses_datetime(tmp_path: Path) -> None:
@@ -146,3 +161,141 @@ def test_executor_fails_closed_without_approval_or_matching_source(tmp_path: Pat
 def test_fill_missing_constant_requires_value() -> None:
     with pytest.raises(ValidationError, match="requires a value"):
         FillMissing(column="amount", strategy="constant")
+
+
+def test_executor_fails_closed_when_operation_postcondition_does_not_hold(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source.csv"
+    source.write_text("legacy_id\n1\n", encoding="utf-8")
+    plan = RemediationPlan(
+        source_artifact_id=uuid4(),
+        source_sha256=_sha256(source),
+        operations=[RenameColumn(from_name="legacy_id", to_name="id")],
+        expected_effects=["column renamed"],
+        required_post_checks=["inspect_schema"],
+        citation_ids=["schema#rename"],
+        rationale="The current schema requires the new name.",
+    )
+    output = tmp_path / "working.csv"
+    executor = RemediationExecutor(PolicyGateway())
+    monkeypatch.setattr(executor, "_apply_operation", lambda frame, _operation: frame.copy())
+
+    with pytest.raises(PostFixValidationError) as exc_info:
+        executor.apply(
+            plan=plan,
+            approval=_approval(plan),
+            trusted_source_path=source,
+            trusted_output_path=output,
+        )
+
+    assert exc_info.value.checks[-1].kind == PostconditionKind.COLUMN_RENAMED
+    assert exc_info.value.checks[-1].passed is False
+    assert not output.exists()
+    assert source.read_text(encoding="utf-8") == "legacy_id\n1\n"
+
+
+def test_executor_revalidates_each_operation_against_final_frame(tmp_path: Path) -> None:
+    source = tmp_path / "source.csv"
+    source.write_text("a,value\n1,safe\n", encoding="utf-8")
+    plan = RemediationPlan(
+        source_artifact_id=uuid4(),
+        source_sha256=_sha256(source),
+        operations=[
+            RenameColumn(from_name="a", to_name="b"),
+            RenameColumn(from_name="b", to_name="a"),
+        ],
+        expected_effects=["column renamed"],
+        required_post_checks=["inspect_schema"],
+        citation_ids=["schema#rename"],
+        rationale="Exercise final-state validation for dependent operations.",
+    )
+    output = tmp_path / "working.csv"
+
+    with pytest.raises(PostFixValidationError) as exc_info:
+        RemediationExecutor(PolicyGateway()).apply(
+            plan=plan,
+            approval=_approval(plan),
+            trusted_source_path=source,
+            trusted_output_path=output,
+        )
+
+    first_check, second_check = exc_info.value.checks
+    assert first_check.operation_index == 0
+    assert first_check.kind == PostconditionKind.COLUMN_RENAMED
+    assert first_check.passed is False
+    assert second_check.operation_index == 1
+    assert second_check.passed is True
+    assert not output.exists()
+    assert source.read_text(encoding="utf-8") == "a,value\n1,safe\n"
+
+
+def test_executor_fails_closed_when_written_bytes_do_not_match_transformation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source.csv"
+    source.write_text("id,amount\n1,\n2,20\n", encoding="utf-8")
+    plan = RemediationPlan(
+        source_artifact_id=uuid4(),
+        source_sha256=_sha256(source),
+        operations=[FillMissing(column="amount", strategy="constant", value=0)],
+        expected_effects=["missing amounts filled"],
+        required_post_checks=["check_missing_values"],
+        citation_ids=["schema#amount"],
+        rationale="The contract assigns zero to missing amounts.",
+    )
+    output = tmp_path / "working.csv"
+    executor = RemediationExecutor(PolicyGateway())
+    monkeypatch.setattr(executor, "_write", lambda _frame, _path: None)
+
+    with pytest.raises(PostFixValidationError) as exc_info:
+        executor.apply(
+            plan=plan,
+            approval=_approval(plan),
+            trusted_source_path=source,
+            trusted_output_path=output,
+        )
+
+    assert exc_info.value.checks[-1].kind == PostconditionKind.OUTPUT_HASH_MATCHES
+    assert exc_info.value.checks[-1].passed is False
+    assert not output.exists()
+
+
+def test_executor_fails_closed_if_original_changes_during_remediation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source.csv"
+    source.write_text("legacy_id\n1\n", encoding="utf-8")
+    plan = RemediationPlan(
+        source_artifact_id=uuid4(),
+        source_sha256=_sha256(source),
+        operations=[RenameColumn(from_name="legacy_id", to_name="id")],
+        expected_effects=["column renamed"],
+        required_post_checks=["inspect_schema"],
+        citation_ids=["schema#rename"],
+        rationale="The current schema requires the new name.",
+    )
+    output = tmp_path / "working.csv"
+    executor = RemediationExecutor(PolicyGateway())
+    write = executor._write
+
+    def write_then_mutate_original(frame: pd.DataFrame, path: Path) -> None:
+        write(frame, path)
+        source.write_text("legacy_id\n2\n", encoding="utf-8")
+
+    monkeypatch.setattr(executor, "_write", write_then_mutate_original)
+
+    with pytest.raises(PostFixValidationError) as exc_info:
+        executor.apply(
+            plan=plan,
+            approval=_approval(plan),
+            trusted_source_path=source,
+            trusted_output_path=output,
+        )
+
+    assert exc_info.value.checks[-1].kind == PostconditionKind.ORIGINAL_UNCHANGED
+    assert exc_info.value.checks[-1].passed is False
+    assert not output.exists()

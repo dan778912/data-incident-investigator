@@ -1,0 +1,2 @@
+2026-11-21T09:45:00Z INFO run_id=invoices-1212 row_count=3 reported_revenue=4475.00
+2026-11-21T09:45:01Z ERROR run_id=invoices-1212 validation=revenue_range expected_max=100.00 actual=4475.00

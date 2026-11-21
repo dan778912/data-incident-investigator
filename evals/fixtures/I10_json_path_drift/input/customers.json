@@ -1,0 +1,5 @@
+[
+  {"customer_id": "cus-1001", "address.postal_code": "90001"},
+  {"customer_id": "cus-1002", "address.postal_code": "94105"},
+  {"customer_id": "cus-1003", "address.postal_code": "98101"}
+]

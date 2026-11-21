@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I10",
+  "assertions": [
+    {"assertion_id": "original_hash_unchanged", "type": "artifact_hash_unchanged", "artifact": "input/customers.json", "expected": true},
+    {"assertion_id": "address_zip_present", "type": "column_present", "artifact": "working_copy/customers.json", "column": "address.zip", "expected": true},
+    {"assertion_id": "old_path_absent", "type": "column_absent", "artifact": "working_copy/customers.json", "column": "address.postal_code", "expected": true},
+    {"assertion_id": "postal_values_preserved", "type": "column_values_exact", "artifact": "working_copy/customers.json", "column": "address.zip", "expected": ["90001", "94105", "98101"]},
+    {"assertion_id": "row_count_three", "type": "row_count", "artifact": "working_copy/customers.json", "expected": 3}
+  ]
+}

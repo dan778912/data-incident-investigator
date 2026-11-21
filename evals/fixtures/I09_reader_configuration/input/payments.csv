@@ -1,0 +1,4 @@
+payment_id;customer_name;amount_eur;status
+pay-0901;José;12.50;settled
+pay-0902;Mina;8.00;settled
+pay-0903;Noor;4.25;pending

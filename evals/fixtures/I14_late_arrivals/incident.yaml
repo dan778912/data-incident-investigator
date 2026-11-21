@@ -1,0 +1,20 @@
+schema_version: "1.0"
+corpus_version: "1.0.0"
+incident_id: I14
+title: Aggressive watermark rejects late events
+fixture_status: ready
+synthetic: true
+user_report: "Two valid events are missing from the hourly aggregation after a watermark change."
+artifacts:
+  - {artifact_id: events.csv, path: input/events.csv, media_type: text/csv, trust: untrusted}
+  - {artifact_id: pipeline.log, path: input/pipeline.log, media_type: text/plain, trust: untrusted}
+  - {artifact_id: runbook.event-watermark.v1, path: runbooks/event_watermark_v1.md, media_type: text/markdown, trust: untrusted_reference}
+expected_workflow:
+  diagnosis: watermark_late_arrivals
+  approval_scenario: reject
+  remediation_disposition: watermark_configuration_not_supported_by_patch_dsl
+  mutate_original: false
+limits:
+  maximum_plan_revisions: 3
+  maximum_retrieval_rounds: 3
+  allowed_patch_operations: []

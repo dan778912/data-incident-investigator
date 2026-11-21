@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
@@ -103,6 +104,32 @@ RemediationOperation = Annotated[
     | ReplaceValues,
     Field(discriminator="op"),
 ]
+
+
+class PostconditionKind(StrEnum):
+    """Deterministic checks derived from trusted operations and integrity boundaries."""
+
+    COLUMN_RENAMED = "column_renamed"
+    COLUMN_CAST = "column_cast"
+    MISSING_VALUES_FILLED = "missing_values_filled"
+    DUPLICATES_REMOVED = "duplicates_removed"
+    DATETIME_PARSED = "datetime_parsed"
+    STRINGS_NORMALIZED = "strings_normalized"
+    VALUES_REPLACED = "values_replaced"
+    ORIGINAL_UNCHANGED = "original_unchanged"
+    OUTPUT_READABLE = "output_readable"
+    OUTPUT_HASH_MATCHES = "output_hash_matches"
+    REGISTRATION_MATCHES = "registration_matches"
+
+
+class PostFixCheck(BaseModel):
+    """Machine-verifiable postcondition result; no model-authored check logic."""
+
+    kind: PostconditionKind
+    operation_index: int | None = Field(default=None, ge=0)
+    target: str = Field(min_length=1, max_length=300)
+    passed: bool
+    metrics: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
 
 
 class RemediationPlan(BaseModel):

@@ -1,0 +1,21 @@
+schema_version: "1.0"
+corpus_version: "1.0.0"
+incident_id: I13
+title: Filter configuration collapses output row count
+fixture_status: ready
+synthetic: true
+user_report: "A scoring feed drops from three eligible records to one after a configuration deployment."
+artifacts:
+  - {artifact_id: events.json, path: input/events.json, media_type: application/json, trust: untrusted}
+  - {artifact_id: filter_config.json, path: input/filter_config.json, media_type: application/json, trust: untrusted_configuration}
+  - {artifact_id: pipeline.log, path: input/pipeline.log, media_type: text/plain, trust: untrusted}
+  - {artifact_id: runbook.score-filter.v1, path: runbooks/score_filter_v1.md, media_type: text/markdown, trust: untrusted_reference}
+expected_workflow:
+  diagnosis: filter_configuration_regression
+  approval_scenario: reject
+  remediation_disposition: configuration_change_not_supported_by_patch_dsl
+  mutate_original: false
+limits:
+  maximum_plan_revisions: 3
+  maximum_retrieval_rounds: 3
+  allowed_patch_operations: []

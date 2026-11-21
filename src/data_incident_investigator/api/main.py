@@ -11,7 +11,7 @@ from uuid import UUID
 import uvicorn
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.types import Command
@@ -32,7 +32,12 @@ from data_incident_investigator.evaluation import (
     LatestEvaluationReader,
     default_results_root,
 )
-from data_incident_investigator.llm import OpenAIProvider, StructuredModelProvider
+from data_incident_investigator.llm import (
+    OpenAIProvider,
+    RecordingProvider,
+    StructuredModelProvider,
+    UsageLedger,
+)
 from data_incident_investigator.persistence import ApplicationRepository
 from data_incident_investigator.security.artifacts import ArtifactStore, ArtifactValidationError
 from data_incident_investigator.security.paths import CasePathResolver
@@ -72,6 +77,7 @@ class InvestigationView(BaseModel):
     verification: dict[str, Any] | None = None
     remediation: dict[str, Any] | None = None
     approval_request: dict[str, Any] | None = None
+    approval: dict[str, Any] | None = None
     remediation_result: dict[str, Any] | None = None
     trace: list[dict[str, Any]] = Field(default_factory=list)
 
@@ -82,6 +88,7 @@ class AppContainer:
     repository: ApplicationRepository
     artifact_store: ArtifactStore
     graph: Any
+    usage_ledger: UsageLedger | None
 
 
 def create_app(
@@ -101,6 +108,7 @@ def create_app(
         approval_key = load_or_create_approval_key(configured)
         approval_ledger = SQLiteApprovalLedger(configured.approval_database)
         live_services: LiveServiceBundle | None = None
+        usage_ledger: UsageLedger | None = None
         if configured.llm_provider == "fake":
             workflow_services = build_demo_services(
                 secret_key=approval_key,
@@ -115,14 +123,24 @@ def create_app(
                 ledger=approval_ledger,
                 clock=SystemClock(),
             )
-            live_services = build_live_services(
-                provider=cast(
+            usage_ledger = UsageLedger(
+                input_cost_per_million=configured.openai_input_cost_per_million,
+                cached_input_cost_per_million=(configured.openai_cached_input_cost_per_million),
+                output_cost_per_million=configured.openai_output_cost_per_million,
+            )
+            provider = RecordingProvider(
+                cast(
                     StructuredModelProvider,
                     OpenAIProvider(
                         api_key=configured.openai_api_key.get_secret_value(),
                         model=configured.openai_model,
+                        reasoning_effort=configured.openai_reasoning_effort,
                     ),
                 ),
+                usage_ledger,
+            )
+            live_services = build_live_services(
+                provider=provider,
                 application_database=configured.application_database,
                 retrieval_database=configured.retrieval_database,
                 data_root=configured.resolved_data_dir,
@@ -149,6 +167,7 @@ def create_app(
                     max_upload_bytes=configured.max_upload_bytes,
                 ),
                 graph=graph,
+                usage_ledger=usage_ledger,
             )
             try:
                 yield
@@ -288,6 +307,34 @@ def create_app(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="artifact not found")
         return ArtifactView.from_stored(artifact)
 
+    @application.get("/api/artifacts/{artifact_id}/download", tags=["artifacts"])
+    async def download_artifact(
+        artifact_id: UUID,
+        container: ContainerDependency,
+    ) -> FileResponse:
+        artifact = await container.repository.get_artifact(artifact_id)
+        if artifact is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="artifact not found")
+        trusted_case_root = CasePathResolver(container.settings.resolved_data_dir).case_root(
+            artifact.case_id
+        )
+        resolved_path = artifact.storage_path.resolve()
+        if not resolved_path.is_relative_to(trusted_case_root):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="artifact path is outside its case boundary",
+            )
+        if not resolved_path.is_file():
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE,
+                detail="artifact content is no longer available",
+            )
+        return FileResponse(
+            resolved_path,
+            media_type=artifact.media_type,
+            filename=artifact.original_filename,
+        )
+
     @application.post(
         "/api/cases/{case_id}/analyze",
         response_model=InvestigationView,
@@ -424,6 +471,7 @@ def _investigation_view(case_id: UUID, state: dict[str, Any]) -> InvestigationVi
         verification=state.get("verification"),
         remediation=state.get("remediation"),
         approval_request=state.get("approval_request"),
+        approval=state.get("approval"),
         remediation_result=state.get("remediation_result"),
         trace=list(state.get("trace", [])),
     )

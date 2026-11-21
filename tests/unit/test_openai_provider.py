@@ -59,6 +59,7 @@ def test_provider_returns_typed_result_without_storing_response() -> None:
     assert result.usage.cached_input_tokens == 40
     assert resource.calls[0]["store"] is False
     assert resource.calls[0]["text_format"] is Answer
+    assert resource.calls[0]["reasoning"] == {"effort": "low"}
 
 
 def test_provider_rejects_missing_or_wrong_structured_value() -> None:

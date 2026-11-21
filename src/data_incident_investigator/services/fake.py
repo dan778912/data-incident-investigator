@@ -238,6 +238,35 @@ class DemoRemediationService:
             "applied": True,
             "message": "Created a remediated working copy.",
             "output_artifact_id": f"{case_id}-remediated",
+            "original_sha256": "0" * 64,
+            "output_sha256": "1" * 64,
+            "validation_passed": True,
+            "checks": [
+                {
+                    "kind": "column_cast",
+                    "operation_index": 0,
+                    "target": "customer_id",
+                    "passed": True,
+                    "metrics": {
+                        "target_type": "integer",
+                        "actual_dtype": "Int64",
+                    },
+                },
+                {
+                    "kind": "original_unchanged",
+                    "operation_index": None,
+                    "target": case_id,
+                    "passed": True,
+                    "metrics": {"simulated": True},
+                },
+                {
+                    "kind": "output_hash_matches",
+                    "operation_index": None,
+                    "target": f"{case_id}-remediated",
+                    "passed": True,
+                    "metrics": {"simulated": True},
+                },
+            ],
         }
 
 

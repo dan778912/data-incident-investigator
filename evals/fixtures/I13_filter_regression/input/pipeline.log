@@ -1,0 +1,2 @@
+2026-11-21T10:00:00Z INFO run_id=quality-1313 input_rows=3 minimum_quality_score=0.95
+2026-11-21T10:00:01Z ERROR run_id=quality-1313 validation=output_count expected=3 actual=1

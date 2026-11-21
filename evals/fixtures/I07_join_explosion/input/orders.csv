@@ -1,0 +1,4 @@
+order_id,customer_id,amount_usd
+ord-0701,cus-0701,10.00
+ord-0702,cus-0701,15.00
+ord-0703,cus-0702,8.00

@@ -1,0 +1,3 @@
+2026-11-21T10:45:00Z INFO run_id=enrich-1515 join_type=inner left_rows=4 right_rows=3
+2026-11-21T10:45:01Z WARN run_id=enrich-1515 unmatched_customer_ids=cus-1599
+2026-11-21T10:45:01Z ERROR run_id=enrich-1515 validation=row_count expected=4 actual=3

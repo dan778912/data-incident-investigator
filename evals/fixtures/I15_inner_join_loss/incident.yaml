@@ -1,0 +1,21 @@
+schema_version: "1.0"
+corpus_version: "1.0.0"
+incident_id: I15
+title: Inner join silently drops unmatched records
+fixture_status: ready
+synthetic: true
+user_report: "One order disappears during customer enrichment without a parse error."
+artifacts:
+  - {artifact_id: orders.csv, path: input/orders.csv, media_type: text/csv, trust: untrusted}
+  - {artifact_id: customers.csv, path: input/customers.csv, media_type: text/csv, trust: untrusted}
+  - {artifact_id: pipeline.log, path: input/pipeline.log, media_type: text/plain, trust: untrusted}
+  - {artifact_id: runbook.order-enrichment.v1, path: runbooks/order_enrichment_v1.md, media_type: text/markdown, trust: untrusted_reference}
+expected_workflow:
+  diagnosis: inner_join_row_loss
+  approval_scenario: reject
+  remediation_disposition: join_configuration_not_supported_by_patch_dsl
+  mutate_original: false
+limits:
+  maximum_plan_revisions: 3
+  maximum_retrieval_rounds: 3
+  allowed_patch_operations: []

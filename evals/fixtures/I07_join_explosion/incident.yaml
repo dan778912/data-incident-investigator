@@ -1,0 +1,21 @@
+schema_version: "1.0"
+corpus_version: "1.0.0"
+incident_id: I07
+title: Many-to-many join explodes row count
+fixture_status: ready
+synthetic: true
+user_report: "Joining orders to the customer dimension produces five rows from three orders."
+artifacts:
+  - {artifact_id: orders.csv, path: input/orders.csv, media_type: text/csv, trust: untrusted}
+  - {artifact_id: customers.csv, path: input/customers.csv, media_type: text/csv, trust: untrusted}
+  - {artifact_id: pipeline.log, path: input/pipeline.log, media_type: text/plain, trust: untrusted}
+  - {artifact_id: runbook.dimension-keys.v1, path: runbooks/dimension_keys_v1.md, media_type: text/markdown, trust: untrusted_reference}
+expected_workflow:
+  diagnosis: join_cardinality_explosion
+  approval_scenario: approve
+  remediation_artifact: customers.csv
+  mutate_original: false
+limits:
+  maximum_plan_revisions: 3
+  maximum_retrieval_rounds: 3
+  allowed_patch_operations: [drop_duplicates]

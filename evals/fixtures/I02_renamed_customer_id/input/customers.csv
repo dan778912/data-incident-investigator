@@ -1,0 +1,4 @@
+customerId,email,status
+cus-0201,ada@example.test,active
+cus-0202,grace@example.test,active
+cus-0203,linus@example.test,inactive

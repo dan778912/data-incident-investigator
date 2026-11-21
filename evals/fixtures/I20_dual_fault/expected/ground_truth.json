@@ -37,14 +37,15 @@
   "expected_patch": [
     {
       "op": "rename_column",
-      "from": "order_identifier",
-      "to": "order_id"
+      "from_name": "order_identifier",
+      "to_name": "order_id"
     },
     {
       "op": "parse_datetime",
       "column": "created_at",
       "accepted_formats": ["rfc3339", "MM/DD/YYYY hh:mm AM UTC"],
-      "output_format": "rfc3339_z"
+      "timezone": "UTC",
+      "on_error": "reject"
     }
   ],
   "expected_timestamps": [

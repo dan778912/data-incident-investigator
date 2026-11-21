@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I03",
+  "assertions": [
+    {"assertion_id": "original_hash_unchanged", "type": "artifact_hash_unchanged", "artifact": "input/orders.csv", "expected": true},
+    {"assertion_id": "amount_type_float", "type": "column_type", "artifact": "working_copy/orders.csv", "column": "amount_usd", "expected": "float"},
+    {"assertion_id": "amount_values_exact", "type": "column_values_numeric", "artifact": "working_copy/orders.csv", "column": "amount_usd", "expected": [12.5, 8.0, 105.25]},
+    {"assertion_id": "row_count_three", "type": "row_count", "artifact": "working_copy/orders.csv", "expected": 3}
+  ]
+}

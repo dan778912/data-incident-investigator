@@ -1,0 +1,2 @@
+2026-11-21T10:15:00Z INFO run_id=events-505 row_count=3 datetime_format=rfc3339
+2026-11-21T10:15:01Z ERROR run_id=events-505 validation=datetime_parse column=created_at failed_rows=1 row_numbers=2

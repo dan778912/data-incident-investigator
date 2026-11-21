@@ -1,0 +1,5 @@
+[
+  {"event_id": "evt-1301", "quality_score": 0.80},
+  {"event_id": "evt-1302", "quality_score": 0.90},
+  {"event_id": "evt-1303", "quality_score": 0.96}
+]

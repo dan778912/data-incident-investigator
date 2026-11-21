@@ -1,0 +1,2 @@
+2026-11-21T07:15:00Z INFO run_id=customers-202 input_columns=customerId,email,status row_count=3
+2026-11-21T07:15:01Z ERROR run_id=customers-202 validation=required_column missing=customer_id

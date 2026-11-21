@@ -36,11 +36,11 @@ expected_workflow:
   initial_hypothesis: source_omitted_client_id
   contradiction: current schema and data provide customer_id while v1 is marked superseded
   revised_hypothesis: stale_runbook_schema_reference
-  approval_scenario: approve
+  approval_scenario: reject
+  remediation_disposition: mapping_configuration_not_supported_by_patch_dsl
   mutate_original: false
 limits:
   maximum_plan_revisions: 3
   minimum_retrieval_rounds: 2
   maximum_retrieval_rounds: 4
-  allowed_patch_operations:
-    - update_mapping
+  allowed_patch_operations: []

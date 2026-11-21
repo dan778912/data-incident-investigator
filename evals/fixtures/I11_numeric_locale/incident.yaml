@@ -1,0 +1,19 @@
+schema_version: "1.0"
+corpus_version: "1.0.0"
+incident_id: I11
+title: European numeric locale parsed incorrectly
+fixture_status: ready
+synthetic: true
+user_report: "European sales amounts fail numeric validation in the US-oriented pipeline."
+artifacts:
+  - {artifact_id: sales.csv, path: input/sales.csv, media_type: text/csv, trust: untrusted}
+  - {artifact_id: pipeline.log, path: input/pipeline.log, media_type: text/plain, trust: untrusted}
+  - {artifact_id: runbook.euro-numbers.v1, path: runbooks/euro_numbers_v1.md, media_type: text/markdown, trust: untrusted_reference}
+expected_workflow:
+  diagnosis: numeric_locale_mismatch
+  approval_scenario: approve
+  mutate_original: false
+limits:
+  maximum_plan_revisions: 3
+  maximum_retrieval_rounds: 3
+  allowed_patch_operations: [replace_values, cast_column]

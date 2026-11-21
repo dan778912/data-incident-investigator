@@ -1,0 +1,2 @@
+2026-11-21T07:30:00Z INFO run_id=amounts-303 inferred_type amount_usd=string
+2026-11-21T07:30:01Z ERROR run_id=amounts-303 validation=numeric_type column=amount_usd expected=float actual=string

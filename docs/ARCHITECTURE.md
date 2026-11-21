@@ -61,7 +61,7 @@ The backend is organized by responsibility rather than framework layer alone:
 
 ```text
 src/data_incident_investigator/
-  api/             HTTP routes, validation, SSE events, error mapping
+  api/             HTTP routes, validation, artifact downloads, error mapping
   domain/          Case, artifact, trace, citation, plan, approval models
   workflow/        Graph state, nodes, conditional edges, checkpoints
   diagnostics/     Read-only tools and typed observations
@@ -70,7 +70,7 @@ src/data_incident_investigator/
   security/        Upload checks, path confinement, redaction, tool policy
   persistence/     SQLite repositories and migrations
   llm/             Provider protocol, OpenAI adapter, deterministic fake
-  observability/   Structured logging, usage, cost, latency, audit events
+  llm/usage.py     In-memory model-call token and estimated-cost ledger
 ```
 
 The frontend is a React and TypeScript application. During development it runs independently for fast iteration. For production, its static build is copied into and served by the FastAPI application so the deployment has a single process and container.
@@ -87,7 +87,7 @@ The graph state contains stable identifiers instead of raw filesystem paths. Imp
 - Proposed remediation plan, source hash, and plan hash.
 - Approval ID and decision.
 - Before-and-after validation results.
-- Token usage, latency, warnings, and terminal status.
+- Warnings and terminal status; model-call usage is recorded by the provider wrapper.
 
 ```mermaid
 flowchart TD
@@ -103,7 +103,8 @@ flowchart TD
     I --> J[Validate and preview]
     J --> K[Interrupt for approval]
     K -->|Reject| N[Report without mutation]
-    K -->|Approve| L[Apply to working copy]
+    K -->|Approve safe DSL| L[Apply to working copy]
+    K -->|Approve manual escalation| O[Record unresolved without mutation]
     L --> M[Post-fix validation]
     M --> N[Final cited report]
 ```
@@ -177,7 +178,7 @@ Core records include:
 - Diagnostic steps, observations, and revision reasons.
 - Retrieval rounds, evidence grades, and citations.
 - Remediation plans, approvals, and validation results.
-- Structured usage, latency, cost, and audit events.
+- Model token/cost snapshots and graph trace events used by the UI and evaluator.
 
 API keys are never stored in the database or repository. They are injected at runtime through environment variables.
 
@@ -185,13 +186,13 @@ API keys are never stored in the database or repository. They are injected at ru
 
 The application exposes a small case-oriented API:
 
-- Create, list, inspect, and delete cases.
+- Create, list, and inspect cases.
 - Upload and validate case artifacts.
 - Start an investigation.
-- Inspect run state and stream trace events with server-sent events.
+- Read the current investigation state and its persisted trace events.
 - Read the investigation, citations, and remediation preview.
 - Approve or reject a pending remediation.
-- Download a working copy or final report.
+- Download a validated remediated working copy.
 - Read health and readiness status.
 
 Evaluation is executed by a local CLI that imports the production workflow. It is not exposed as a public mutation endpoint.
@@ -200,7 +201,7 @@ Evaluation is executed by a local CLI that imports the production workflow. It i
 
 The frontend has five primary views:
 
-1. **Case dashboard:** status, last run, create, and explicit deletion controls.
+1. **Case dashboard:** status, last run, case creation, and investigation navigation.
 2. **Incident intake:** uploads for the dataset, log, schema, and runbooks plus expected key columns.
 3. **Investigation workspace:** live plan, diagnostic observations, citations, revision events, and guardrail events.
 4. **Approval review:** typed operations, before-and-after sample, impact estimate, validation plan, and approve/reject controls.
@@ -228,7 +229,10 @@ At least three prompt-injection attacks will be executed against different surfa
 
 ## Observability and Evaluation Hooks
 
-Every graph node emits structured events containing its input identifiers, outcome, latency, and sanitized error. Model calls record provider, configured model, token usage, estimated cost, and latency. The evaluator consumes the same trace events used by the UI.
+The graph records structured, sanitized trace events for retrieval, diagnostics, revisions,
+approval, remediation, and terminal outcomes. A provider wrapper records model call counts, input,
+cached-input, and output tokens plus estimated cost. The evaluator consumes the persisted workflow
+state and trace records used by the UI.
 
 Primary quantitative metrics include root-cause accuracy, remediation success, post-fix validation rate, citation precision, evidence coverage, successful-revision rate, unsafe-action rate, latency percentiles, tokens per session, and estimated session cost.
 

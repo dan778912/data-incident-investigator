@@ -30,4 +30,4 @@ limits:
   maximum_plan_revisions: 3
   maximum_retrieval_rounds: 3
   allowed_patch_operations:
-    - deduplicate_latest
+    - drop_duplicates

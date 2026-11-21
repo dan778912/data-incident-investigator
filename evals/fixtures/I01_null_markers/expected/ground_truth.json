@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I01",
+  "root_cause_codes": ["null_marker_normalization"],
+  "required_evidence": [
+    {"evidence_id": "orders.null_marker_values", "fact": "Two raw priority_code cells contain the valid literal N/A."},
+    {"evidence_id": "orders.null_ratio_spike", "fact": "The reader interprets two of four priority codes as null."},
+    {"evidence_id": "log.null_validation_failure", "fact": "The null-ratio check reports 0.50 against a 0.10 threshold."}
+  ],
+  "required_source_ids": ["runbook.null-markers.v1"],
+  "expected_patch": [
+    {"op": "fill_missing", "column": "priority_code", "strategy": "constant", "value": "NOT_APPLICABLE"}
+  ],
+  "approval_decision": "approve",
+  "required_trace_events": ["patch_proposed", "approval_requested", "approval_resolved", "patch_applied", "validation_completed"]
+}

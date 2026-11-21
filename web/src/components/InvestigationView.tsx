@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock3,
+  Download,
   FileCheck2,
   GitBranch,
   LockKeyhole,
@@ -36,27 +37,48 @@ const eventIcons: Record<TimelineKind, typeof Search> = {
 
 function ApprovalPanel({
   approval,
+  outputArtifactId,
   onDecision,
   deciding
 }: {
   approval: Approval;
+  outputArtifactId: string | null;
   onDecision: Props["onDecision"];
   deciding: boolean;
 }) {
   if (approval.status !== "pending") {
     const approved = approval.status === "approved";
+    const remediated = approved && !approval.manualEscalation;
     return (
       <section className={`panel decision-complete ${approved ? "approved" : "rejected"}`}>
         {approved ? <CheckCircle2 aria-hidden="true" /> : <X aria-hidden="true" />}
         <div>
           <p className="eyebrow">Decision recorded</p>
-          <h2>{approved ? "Approved - remediation queued" : "Remediation rejected"}</h2>
+          <h2>
+            {approval.manualEscalation
+              ? "Manual escalation recorded"
+              : approved
+                ? "Remediation complete"
+                : "Remediation rejected"}
+          </h2>
           <p>
-            {approved
-              ? "The hash-bound plan may now run against a working copy. The original remains unchanged."
+            {approval.manualEscalation
+              ? "The finding requires a source or configuration change outside the safe remediation DSL. No data was modified."
+              : approved
+              ? "The approved plan ran against a working copy. The original remains unchanged."
               : "No working copy was created and no source data was modified."}
           </p>
         </div>
+        {remediated && outputArtifactId && (
+          <a
+            className="button button-primary result-download"
+            download
+            href={`/api/artifacts/${encodeURIComponent(outputArtifactId)}/download`}
+          >
+            <Download aria-hidden="true" size={17} />
+            Download remediated copy
+          </a>
+        )}
       </section>
     );
   }
@@ -122,6 +144,19 @@ export function InvestigationView({
   onDecision,
   deciding
 }: Props) {
+  const ValidationIcon =
+    investigation.validation.status === "passed"
+      ? CheckCircle2
+      : investigation.validation.status === "not_run"
+        ? X
+        : Clock3;
+  const validationLabel =
+    investigation.validation.status === "passed"
+      ? "Post-fix checks passed"
+      : investigation.validation.status === "not_run"
+        ? "Validation not run"
+        : "Awaiting approval";
+
   return (
     <div className="page-stack investigation-page">
       <header className="investigation-header">
@@ -214,12 +249,18 @@ export function InvestigationView({
         <div><p className="eyebrow">Before</p><strong>{investigation.validation.before}</strong></div>
         <ChevronRight aria-hidden="true" />
         <div><p className="eyebrow">After typed remediation</p><strong>{investigation.validation.after}</strong></div>
-        <span className="validation-status"><Clock3 aria-hidden="true" size={16} /> Awaiting approval</span>
+        <span
+          className={`validation-status validation-${investigation.validation.status}`}
+          role="status"
+        >
+          <ValidationIcon aria-hidden="true" size={16} /> {validationLabel}
+        </span>
       </section>
 
       <ApprovalPanel
         approval={investigation.approval}
         deciding={deciding}
+        outputArtifactId={investigation.outputArtifactId}
         onDecision={onDecision}
       />
     </div>

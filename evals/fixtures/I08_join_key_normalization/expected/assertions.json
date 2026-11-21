@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I08",
+  "assertions": [
+    {"assertion_id": "original_hash_unchanged", "type": "artifact_hash_unchanged", "artifact": "input/orders.csv", "expected": true},
+    {"assertion_id": "sku_values_normalized", "type": "column_values_exact", "artifact": "working_copy/orders.csv", "column": "sku", "expected": ["sku-1", "sku-2", "sku-3"]},
+    {"assertion_id": "all_orders_matched", "type": "join_match_count", "left": "working_copy/orders.csv", "right": "input/products.csv", "keys": ["sku"], "expected": 3},
+    {"assertion_id": "row_count_three", "type": "row_count", "artifact": "working_copy/orders.csv", "expected": 3}
+  ]
+}

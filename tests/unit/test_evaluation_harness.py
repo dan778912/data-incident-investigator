@@ -7,6 +7,9 @@ import sys
 from pathlib import Path
 
 import pytest
+from pydantic import TypeAdapter
+
+from data_incident_investigator.domain.remediation import RemediationOperation
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -39,12 +42,47 @@ def test_loads_and_validates_frozen_twenty_case_manifest() -> None:
 
     assert len(cases) == 20
     assert len({case.incident_id for case in cases}) == 20
-    assert ready == {"I04", "I18", "I19", "I20"}
+    assert ready == {f"I{index:02d}" for index in range(1, 21)}
     assert i19.minimum_retrieval_rounds == 2
     assert i19.required_source_ids == (
         "runbook.customer-schema.v1",
         "runbook.customer-schema.v2",
     )
+
+
+def test_fixture_contracts_match_manifest_and_remediation_dsl() -> None:
+    cases = load_manifest(EVALS_ROOT / "manifest.jsonl")
+    operation_adapter = TypeAdapter(RemediationOperation)
+
+    for case in cases:
+        assert case.fixture_path is not None
+        fixture = EVALS_ROOT / case.fixture_path
+        ground_truth = json.loads(
+            (fixture / "expected" / "ground_truth.json").read_text(encoding="utf-8")
+        )
+        assertions = json.loads(
+            (fixture / "expected" / "assertions.json").read_text(encoding="utf-8")
+        )
+        evidence_ids = {item["evidence_id"] for item in ground_truth["required_evidence"]}
+        assertion_ids = {item["assertion_id"] for item in assertions["assertions"]}
+        patch_operations = ground_truth["expected_patch"]
+        patch_operation_names = {item["op"] for item in patch_operations}
+        runbook_source_ids = {
+            line.split(":", 1)[1].strip()
+            for path in (fixture / "runbooks").glob("*.md")
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.startswith("source_id:")
+        }
+
+        assert set(ground_truth["root_cause_codes"]) == set(case.root_cause_codes)
+        assert evidence_ids == set(case.required_evidence_ids)
+        assert set(ground_truth["required_source_ids"]) == set(case.required_source_ids)
+        assert runbook_source_ids == set(case.required_source_ids)
+        assert assertion_ids == set(case.validation_assertion_ids)
+        assert patch_operation_names == set(case.allowed_patch_operations)
+        assert ground_truth["approval_decision"] == case.approval_scenario
+        for operation in patch_operations:
+            operation_adapter.validate_python(operation)
 
 
 def test_manifest_rejects_duplicate_incident_ids(tmp_path: Path) -> None:
@@ -73,7 +111,7 @@ def test_trace_writer_validates_jsonl_and_stream_order(tmp_path: Path) -> None:
 
 def test_grades_ready_fixtures_across_all_metric_groups() -> None:
     cases = load_manifest(EVALS_ROOT / "manifest.jsonl")
-    ready_cases = [case for case in cases if case.fixture_status == "ready"]
+    ready_cases = [case for case in cases if case.incident_id in {"I04", "I18", "I19", "I20"}]
     observations = [
         _passing_observation(case, latency_ms=float(index * 100), cost=index / 100)
         for index, case in enumerate(ready_cases, start=1)
@@ -84,7 +122,7 @@ def test_grades_ready_fixtures_across_all_metric_groups() -> None:
     assert summary.run_count == 4
     assert summary.unique_fixture_count == 4
     assert summary.metrics["coverage"]["manifest_fixture_coverage"].value == pytest.approx(0.2)
-    assert summary.metrics["coverage"]["ready_fixture_coverage"].value == pytest.approx(1.0)
+    assert summary.metrics["coverage"]["ready_fixture_coverage"].value == pytest.approx(0.2)
     assert summary.metrics["diagnosis"]["cause_exact_set_accuracy"].value == pytest.approx(1.0)
     assert summary.metrics["diagnosis"]["cause_macro_f1"].value == pytest.approx(1.0)
     assert summary.metrics["repair"]["repair_postcondition_rate"].value == pytest.approx(1.0)

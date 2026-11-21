@@ -1,0 +1,5 @@
+order_id,customer_id,amount_usd
+ord-1501,cus-1501,10.00
+ord-1502,cus-1502,12.00
+ord-1503,cus-1503,8.00
+ord-1504,cus-1599,5.00

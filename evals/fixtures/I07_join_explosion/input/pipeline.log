@@ -1,0 +1,3 @@
+2026-11-21T08:30:00Z INFO run_id=join-707 left_rows=3 right_rows=3 join_key=customer_id
+2026-11-21T08:30:01Z ERROR run_id=join-707 validation=row_count expected=3 actual=5
+2026-11-21T08:30:01Z WARN run_id=join-707 right_key_duplicates=cus-0701

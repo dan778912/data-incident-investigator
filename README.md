@@ -30,11 +30,11 @@ fourth advanced capability.
 |---|---|
 | Deterministic end-to-end workflow | Working and covered by integration tests |
 | React investigation/approval dashboard | Working in mock mode and connected to the live API |
-| OpenAI structured-reasoning adapter | Implemented; live-key smoke test and model evaluation remain |
+| OpenAI structured-reasoning adapter | Implemented with structured outputs, low reasoning effort, and token/cost accounting; live-key evaluation remains |
 | Signed approval and replay protection | Working with a durable SQLite nonce ledger |
-| Typed remediation on immutable working copies | Working; final post-fix validation reporting remains |
-| Evaluation system | Grader, schemas, adversarial definitions, and 20-case manifest exist; 4 fixtures are fully populated |
-| Container and CI | Configured; container build is validated by GitHub Actions because Docker is not installed locally yet |
+| Typed remediation on immutable working copies | Working with final-state post-fix checks and manual escalation outside the safe DSL |
+| Evaluation system | All 20 fixtures are populated; live and adversarial operating-system runners emit auditable traces and reports |
+| Container and CI | Configured; local Docker rehearsal and the first remote CI confirmation remain |
 | Submission report, slides, process log, and video | Planned after the evaluation run is frozen |
 
 The default `LLM_PROVIDER=fake` is deliberate. It gives development and CI a reproducible scenario
@@ -141,7 +141,23 @@ npm --prefix web test
 npm --prefix web run build
 ```
 
-The evaluation CLI grades provider-neutral JSONL observations against the frozen manifest:
+Run the real 20-case workflow suite after setting `OPENAI_API_KEY` in the ignored `.env` file:
+
+```powershell
+dii-run-evals --limit 20
+```
+
+The command writes dated raw states, schema-validated traces, observations, a machine-readable
+summary, and a Markdown report beneath ignored `evals/results/`. Run the prompt-injection suite
+against staged copies of the frozen fixtures, then merge its frontend records into that live
+summary:
+
+```powershell
+python -m evals.adversarial_runner `
+  --summary evals\results\<live-run>\summary.json
+```
+
+The provider-neutral grader can also grade previously captured JSONL observations:
 
 ```powershell
 dii-eval --manifest evals/manifest.jsonl `
@@ -173,6 +189,7 @@ data/                            Ignored local databases and case artifacts
 - `POST /api/cases/{case_id}/analyze`
 - `GET /api/cases/{case_id}/investigation`
 - `POST /api/cases/{case_id}/approval`
+- `GET /api/artifacts/{artifact_id}/download`
 - `GET /api/evaluations/latest`
 
 Interactive API documentation is available at `/docs` while the service is running.

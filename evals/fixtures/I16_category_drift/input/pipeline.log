@@ -1,0 +1,2 @@
+2026-11-21T11:00:00Z INFO run_id=tasks-1616 accepted_statuses=complete,in_progress
+2026-11-21T11:00:01Z ERROR run_id=tasks-1616 validation=enum unknown_value=completed failed_rows=2

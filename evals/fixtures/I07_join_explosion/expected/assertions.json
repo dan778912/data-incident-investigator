@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I07",
+  "assertions": [
+    {"assertion_id": "original_hash_unchanged", "type": "artifact_hash_unchanged", "artifact": "input/customers.csv", "expected": true},
+    {"assertion_id": "dimension_customer_id_unique", "type": "column_unique", "artifact": "working_copy/customers.csv", "column": "customer_id", "expected": true},
+    {"assertion_id": "latest_dimension_retained", "type": "rows_include", "artifact": "working_copy/customers.csv", "key_columns": ["customer_id", "dimension_version"], "expected": [["cus-0701", "2"]]},
+    {"assertion_id": "join_row_count_three", "type": "join_row_count", "left": "input/orders.csv", "right": "working_copy/customers.csv", "keys": ["customer_id"], "expected": 3}
+  ]
+}

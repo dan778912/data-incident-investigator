@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I02",
+  "assertions": [
+    {"assertion_id": "original_hash_unchanged", "type": "artifact_hash_unchanged", "artifact": "input/customers.csv", "expected": true},
+    {"assertion_id": "customer_id_present", "type": "column_present", "artifact": "working_copy/customers.csv", "column": "customer_id", "expected": true},
+    {"assertion_id": "customerId_absent", "type": "column_absent", "artifact": "working_copy/customers.csv", "column": "customerId", "expected": true},
+    {"assertion_id": "identifier_values_preserved", "type": "column_values_exact", "artifact": "working_copy/customers.csv", "column": "customer_id", "expected": ["cus-0201", "cus-0202", "cus-0203"]},
+    {"assertion_id": "row_count_three", "type": "row_count", "artifact": "working_copy/customers.csv", "expected": 3}
+  ]
+}

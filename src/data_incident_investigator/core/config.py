@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     llm_provider: Literal["fake", "openai", "nvidia"] = "fake"
     openai_api_key: SecretStr | None = None
     openai_model: str = "gpt-6.2-astra"
+    openai_reasoning_effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
+    openai_input_cost_per_million: float = Field(default=8.0, ge=0)
+    openai_cached_input_cost_per_million: float = Field(default=0.4, ge=0)
+    openai_output_cost_per_million: float = Field(default=40.0, ge=0)
     approval_hmac_key: SecretStr | None = None
 
     max_upload_bytes: int = Field(default=10 * 1024 * 1024, ge=1, le=100 * 1024 * 1024)

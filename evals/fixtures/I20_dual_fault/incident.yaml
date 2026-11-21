@@ -25,7 +25,7 @@ expected_workflow:
   first_candidate_patch: rename order_identifier to order_id on a disposable preview
   contradiction: strict timestamp validation then fails for the second row
   revised_hypothesis: schema_and_timestamp_faults
-  approval_scenario: approve_combined_patch
+  approval_scenario: approve
   mutate_original: false
 limits:
   maximum_plan_revisions: 3

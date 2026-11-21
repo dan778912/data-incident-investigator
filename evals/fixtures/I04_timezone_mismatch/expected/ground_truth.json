@@ -30,13 +30,9 @@
     {
       "op": "parse_datetime",
       "column": "created_at",
-      "respect_input_offset": true
-    },
-    {
-      "op": "convert_timezone",
-      "column": "created_at",
+      "accepted_formats": ["rfc3339"],
       "timezone": "UTC",
-      "format": "rfc3339_z"
+      "on_error": "reject"
     }
   ],
   "expected_utc_values": [

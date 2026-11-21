@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I15",
+  "assertions": [
+    {"assertion_id": "orders_hash_unchanged", "type": "artifact_hash_unchanged", "artifact": "input/orders.csv", "expected": true},
+    {"assertion_id": "customers_hash_unchanged", "type": "artifact_hash_unchanged", "artifact": "input/customers.csv", "expected": true},
+    {"assertion_id": "no_patch_applied", "type": "event_absent", "event_type": "patch_applied", "expected": true},
+    {"assertion_id": "join_escalation_recorded", "type": "trace_contains", "field": "remediation_disposition", "value": "inner to left", "expected": true}
+  ]
+}

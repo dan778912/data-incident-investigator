@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I11",
+  "root_cause_codes": ["numeric_locale_mismatch"],
+  "required_evidence": [
+    {"evidence_id": "sales.comma_decimals", "fact": "All amount_eur values use comma decimals."},
+    {"evidence_id": "sales.period_thousands", "fact": "The first amount uses a period thousands separator."},
+    {"evidence_id": "log.us_locale_type_failure", "fact": "An en_US parser leaves all three values as strings."}
+  ],
+  "required_source_ids": ["runbook.euro-numbers.v1"],
+  "expected_patch": [
+    {"op": "replace_values", "column": "amount_eur", "mapping": {"1.234,56": "1234.56", "25,50": "25.50", "8,00": "8.00"}},
+    {"op": "cast_column", "column": "amount_eur", "target_type": "float", "invalid_policy": "reject"}
+  ],
+  "approval_decision": "approve",
+  "required_trace_events": ["patch_proposed", "approval_requested", "approval_resolved", "patch_applied", "validation_completed"]
+}

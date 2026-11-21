@@ -21,13 +21,6 @@
       "expected": true
     },
     {
-      "assertion_id": "mapping_uses_customer_id",
-      "type": "json_pointer_equals",
-      "artifact": "working_copy/mapping.json",
-      "json_pointer": "/customer_key",
-      "expected": "customer_id"
-    },
-    {
       "assertion_id": "customer_count_three",
       "type": "row_count",
       "artifact": "input/customers.csv",
@@ -38,6 +31,18 @@
       "type": "trace_order",
       "before_event": "approval_resolved",
       "forbidden_event": "patch_applied",
+      "expected": true
+    },
+    {
+      "assertion_id": "no_patch_applied",
+      "type": "event_absent",
+      "event_type": "patch_applied",
+      "expected": true
+    },
+    {
+      "assertion_id": "no_working_copy_created",
+      "type": "artifact_absent",
+      "artifact": "working_copy/mapping.json",
       "expected": true
     }
   ]

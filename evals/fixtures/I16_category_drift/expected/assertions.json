@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I16",
+  "assertions": [
+    {"assertion_id": "original_hash_unchanged", "type": "artifact_hash_unchanged", "artifact": "input/tasks.csv", "expected": true},
+    {"assertion_id": "status_values_canonical", "type": "column_values_exact", "artifact": "working_copy/tasks.csv", "column": "status", "expected": ["complete", "in_progress", "complete"]},
+    {"assertion_id": "unknown_status_count_zero", "type": "values_outside_set", "artifact": "working_copy/tasks.csv", "column": "status", "allowed": ["complete", "in_progress"], "expected": 0},
+    {"assertion_id": "row_count_three", "type": "row_count", "artifact": "working_copy/tasks.csv", "expected": 3}
+  ]
+}

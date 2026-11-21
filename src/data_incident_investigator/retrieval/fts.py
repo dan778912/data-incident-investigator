@@ -16,6 +16,7 @@ _TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{1,63}")
 class EvidenceHit:
     evidence_id: str
     document_id: str
+    source_id: str
     source: str
     excerpt: str
     locator: str
@@ -27,6 +28,7 @@ class EvidenceHit:
     def as_workflow_record(self) -> dict[str, str | float]:
         return {
             "evidence_id": self.evidence_id,
+            "source_id": self.source_id,
             "source": f"{self.source} ({self.locator})",
             "excerpt": self.excerpt,
             "relevance_score": self.relevance_score,
@@ -59,6 +61,7 @@ class FtsRunbookRepository:
 
             CREATE TABLE IF NOT EXISTS documents (
                 document_id TEXT PRIMARY KEY,
+                source_id TEXT NOT NULL,
                 source_name TEXT NOT NULL,
                 version TEXT NOT NULL,
                 effective_date TEXT,
@@ -79,12 +82,23 @@ class FtsRunbookRepository:
             );
             """
         )
+        columns = {
+            row[1] for row in self._connection.execute("PRAGMA table_info(documents)").fetchall()
+        }
+        if "source_id" not in columns:
+            self._connection.execute(
+                "ALTER TABLE documents ADD COLUMN source_id TEXT NOT NULL DEFAULT ''"
+            )
+            self._connection.execute(
+                "UPDATE documents SET source_id = document_id WHERE source_id = ''"
+            )
         self._connection.commit()
 
     def index_document(
         self,
         *,
         document_id: str,
+        source_id: str | None = None,
         source_name: str,
         text: str,
         version: str,
@@ -113,10 +127,11 @@ class FtsRunbookRepository:
             self._connection.execute(
                 """
                 INSERT INTO documents(
-                    document_id, source_name, version, effective_date, superseded_by
+                    document_id, source_id, source_name, version, effective_date, superseded_by
                 )
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(document_id) DO UPDATE SET
+                    source_id = excluded.source_id,
                     source_name = excluded.source_name,
                     version = excluded.version,
                     effective_date = excluded.effective_date,
@@ -124,6 +139,7 @@ class FtsRunbookRepository:
                 """,
                 (
                     document_id,
+                    source_id or document_id,
                     source_name,
                     version,
                     effective_date.isoformat() if effective_date else None,
@@ -170,6 +186,7 @@ class FtsRunbookRepository:
                 c.document_id,
                 c.chunk_index,
                 c.content,
+                d.source_id,
                 d.source_name,
                 d.version,
                 d.effective_date,
@@ -188,6 +205,7 @@ class FtsRunbookRepository:
             EvidenceHit(
                 evidence_id=row["chunk_id"],
                 document_id=row["document_id"],
+                source_id=row["source_id"],
                 source=row["source_name"],
                 excerpt=row["content"],
                 locator=f"chunk-{row['chunk_index']}",

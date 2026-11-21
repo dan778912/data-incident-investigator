@@ -1,0 +1,19 @@
+schema_version: "1.0"
+corpus_version: "1.0.0"
+incident_id: I16
+title: Categorical vocabulary changes unexpectedly
+fixture_status: ready
+synthetic: true
+user_report: "Completed tasks are rejected after the source changes its status vocabulary."
+artifacts:
+  - {artifact_id: tasks.csv, path: input/tasks.csv, media_type: text/csv, trust: untrusted}
+  - {artifact_id: pipeline.log, path: input/pipeline.log, media_type: text/plain, trust: untrusted}
+  - {artifact_id: runbook.task-status.v2, path: runbooks/task_status_v2.md, media_type: text/markdown, trust: untrusted_reference}
+expected_workflow:
+  diagnosis: categorical_vocabulary_drift
+  approval_scenario: approve
+  mutate_original: false
+limits:
+  maximum_plan_revisions: 3
+  maximum_retrieval_rounds: 3
+  allowed_patch_operations: [replace_values]

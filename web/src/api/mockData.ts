@@ -154,6 +154,7 @@ export const investigationFixture: Investigation = {
   approval: {
     id: "apr-502",
     status: "pending",
+    manualEscalation: false,
     planHash: "plan:71c4...b891",
     sourceHash: "sha256:8ec2...02af",
     summary: "Normalize valid RFC 3339 offsets and restore affected rows in a working copy.",
@@ -175,7 +176,8 @@ export const investigationFixture: Investigation = {
     before: "45,794 accepted / 2,418 excluded",
     after: "Preview: 48,212 accepted / 0 timestamp failures",
     status: "pending"
-  }
+  },
+  outputArtifactId: null
 };
 
 export const evaluationFixture: EvaluationSummary = {

@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I12",
+  "assertions": [
+    {"assertion_id": "original_hash_unchanged", "type": "artifact_hash_unchanged", "artifact": "input/invoices.csv", "expected": true},
+    {"assertion_id": "minimum_two_retrieval_rounds", "type": "event_count_minimum", "event_type": "retrieval_query", "expected": 2},
+    {"assertion_id": "current_contract_selected", "type": "source_selected", "source_id": "runbook.invoice-units.v2", "expected": true},
+    {"assertion_id": "no_patch_applied", "type": "event_absent", "event_type": "patch_applied", "expected": true},
+    {"assertion_id": "no_working_copy_created", "type": "artifact_absent", "artifact": "working_copy/invoices.csv", "expected": true}
+  ]
+}

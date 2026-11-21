@@ -20,9 +20,16 @@ from data_incident_investigator.workflow import (
     ApprovalReplayError,
     build_investigation_graph,
 )
+from data_incident_investigator.workflow.services import WorkflowServices
 from data_incident_investigator.workflow.state import (
     ApprovalDecisionRecord,
+    ApprovalRecord,
     ApprovalRequestRecord,
+    DiagnosticRecord,
+    EvidenceRecord,
+    RemediationRecord,
+    RemediationResult,
+    VerificationRecord,
 )
 
 DEMO_SECRET = b"integration-test-approval-key-32-bytes"
@@ -110,6 +117,63 @@ def test_rejection_consumes_approval_without_calling_apply() -> None:
     assert rejected["approval"]["approved"] is False
     assert "remediation_result" not in rejected
     assert bundle.remediation.apply_calls == 0
+
+
+def test_approved_manual_escalation_finishes_without_mutation() -> None:
+    bundle = build_demo_services(secret_key=DEMO_SECRET)
+
+    class ManualEscalationService:
+        apply_calls = 0
+
+        def propose(
+            self,
+            *,
+            incident_summary: str,
+            verification: VerificationRecord,
+            evidence: list[EvidenceRecord],
+            diagnostics: list[DiagnosticRecord],
+        ) -> RemediationRecord:
+            return {
+                "proposal_id": "manual-source-replacement",
+                "disposition": "manual_escalation",
+                "title": "Replace the corrupt upstream source",
+                "explanation": "Missing source bytes cannot be reconstructed safely.",
+                "operations": [],
+                "citation_ids": [evidence[0]["evidence_id"]],
+            }
+
+        def apply(
+            self,
+            *,
+            case_id: str,
+            proposal: RemediationRecord,
+            approval: ApprovalRecord,
+        ) -> RemediationResult:
+            self.apply_calls += 1
+            raise AssertionError("manual escalation must never invoke remediation apply")
+
+    remediation = ManualEscalationService()
+    services = WorkflowServices(
+        retrieval=bundle.retrieval,
+        reasoning=bundle.reasoning,
+        diagnostics=bundle.diagnostics,
+        remediation=remediation,
+        approval=bundle.approval,
+    )
+    graph = build_investigation_graph(services, checkpointer=InMemorySaver())
+    config = {"configurable": {"thread_id": "case-manual-escalation"}}
+
+    pending = graph.invoke(initial_input("case-manual-escalation"), config)
+    request = approval_request(pending)
+    completed = graph.invoke(
+        Command(resume=decision_for(request, approved=True, note="Escalate to the source owner.")),
+        config,
+    )
+
+    assert completed["status"] == "unresolved"
+    assert completed["remediation"]["disposition"] == "manual_escalation"
+    assert remediation.apply_calls == 0
+    assert "remediation_result" not in completed
 
 
 def test_mismatched_binding_is_rejected_before_apply() -> None:

@@ -1,0 +1,2 @@
+2026-11-21T09:15:00Z INFO run_id=address-1010 flattened_columns=customer_id,address.postal_code row_count=3
+2026-11-21T09:15:01Z ERROR run_id=address-1010 mapping_path=address.zip missing_count=3

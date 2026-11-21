@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I06",
+  "assertions": [
+    {"assertion_id": "original_hash_unchanged", "type": "artifact_hash_unchanged", "artifact": "input/events.csv", "expected": true},
+    {"assertion_id": "event_id_unique", "type": "column_unique", "artifact": "working_copy/events.csv", "column": "event_id", "expected": true},
+    {"assertion_id": "latest_versions_retained", "type": "rows_include", "artifact": "working_copy/events.csv", "key_columns": ["event_id", "event_version"], "expected": [["evt-0602", "2"], ["evt-0603", "2"]]},
+    {"assertion_id": "row_count_three", "type": "row_count", "artifact": "working_copy/events.csv", "expected": 3}
+  ]
+}

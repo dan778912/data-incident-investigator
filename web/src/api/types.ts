@@ -63,6 +63,7 @@ export interface RemediationOperation {
 export interface Approval {
   id: string;
   status: "pending" | "approved" | "rejected";
+  manualEscalation: boolean;
   planHash: string;
   sourceHash: string;
   summary: string;
@@ -88,6 +89,7 @@ export interface Investigation {
     after: string;
     status: "pending" | "passed" | "not_run";
   };
+  outputArtifactId: string | null;
 }
 
 export interface EvaluationMetric {

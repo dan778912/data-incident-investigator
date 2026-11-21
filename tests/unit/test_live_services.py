@@ -17,11 +17,15 @@ from pydantic import BaseModel
 from data_incident_investigator.diagnostics.engine import DiagnosticEngine
 from data_incident_investigator.domain.artifacts import ArtifactKind, StoredArtifact
 from data_incident_investigator.domain.cases import CreateCaseRequest, IncidentCase
+from data_incident_investigator.domain.causes import RootCauseCode
 from data_incident_investigator.domain.diagnostics import DiagnosticTool
 from data_incident_investigator.domain.remediation import RenameColumn
 from data_incident_investigator.llm.base import StructuredResult, UsageRecord
 from data_incident_investigator.persistence import ApplicationRepository
-from data_incident_investigator.remediation.executor import RemediationExecutor
+from data_incident_investigator.remediation.executor import (
+    PostFixValidationError,
+    RemediationExecutor,
+)
 from data_incident_investigator.retrieval import FtsRunbookRepository
 from data_incident_investigator.security.paths import CasePathResolver
 from data_incident_investigator.security.policy import PolicyGateway
@@ -228,6 +232,92 @@ def test_artifact_catalog_rejects_mixed_case_ownership(tmp_path: Path) -> None:
         )
 
 
+def test_artifact_catalog_rejects_output_metadata_that_does_not_match_bytes(
+    tmp_path: Path,
+) -> None:
+    data_root = tmp_path / "data"
+    database_path = tmp_path / "application.sqlite3"
+    repository = _repository(database_path)
+    case = _case(repository, "Registration validation case")
+    resolver = CasePathResolver(data_root)
+    output_path = resolver.working_path(case.case_id, uuid4(), ".csv")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("id,value\n1,10\n", encoding="utf-8")
+    output = StoredArtifact(
+        case_id=case.case_id,
+        kind=ArtifactKind.WORKING_COPY,
+        original_filename="remediated-orders.csv",
+        storage_path=output_path,
+        media_type="text/csv",
+        size_bytes=output_path.stat().st_size,
+        sha256="0" * 64,
+    )
+
+    with pytest.raises(PostFixValidationError) as exc_info:
+        ArtifactCatalog(database_path, data_root).register_working_copy(output)
+
+    assert exc_info.value.checks[-1].kind.value == "output_hash_matches"
+    assert exc_info.value.checks[-1].passed is False
+    with sqlite3.connect(database_path) as connection:
+        registered = connection.execute(
+            "SELECT 1 FROM artifacts WHERE artifact_id = ?",
+            (str(output.artifact_id),),
+        ).fetchone()
+        audited = connection.execute(
+            "SELECT 1 FROM audit_events WHERE case_id = ?",
+            (str(case.case_id),),
+        ).fetchone()
+    assert registered is None
+    assert audited is None
+
+
+def test_artifact_catalog_rolls_back_mismatched_registration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_root = tmp_path / "data"
+    database_path = tmp_path / "application.sqlite3"
+    repository = _repository(database_path)
+    case = _case(repository, "Registration rollback case")
+    resolver = CasePathResolver(data_root)
+    output_path = resolver.working_path(case.case_id, uuid4(), ".csv")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("id,value\n1,10\n", encoding="utf-8")
+    output = StoredArtifact(
+        case_id=case.case_id,
+        kind=ArtifactKind.WORKING_COPY,
+        original_filename="remediated-orders.csv",
+        storage_path=output_path,
+        media_type="text/csv",
+        size_bytes=output_path.stat().st_size,
+        sha256=_sha256(output_path),
+    )
+    catalog = ArtifactCatalog(database_path, data_root)
+    from_row = catalog._from_row
+
+    def mismatched_from_row(row: sqlite3.Row) -> StoredArtifact:
+        return from_row(row).model_copy(update={"media_type": "application/json"})
+
+    monkeypatch.setattr(catalog, "_from_row", mismatched_from_row)
+
+    with pytest.raises(PostFixValidationError) as exc_info:
+        catalog.register_working_copy(output)
+
+    assert exc_info.value.checks[-1].kind.value == "registration_matches"
+    assert exc_info.value.checks[-1].passed is False
+    with sqlite3.connect(database_path) as connection:
+        registered = connection.execute(
+            "SELECT 1 FROM artifacts WHERE artifact_id = ?",
+            (str(output.artifact_id),),
+        ).fetchone()
+        audited = connection.execute(
+            "SELECT 1 FROM audit_events WHERE case_id = ?",
+            (str(case.case_id),),
+        ).fetchone()
+    assert registered is None
+    assert audited is None
+
+
 def test_live_retrieval_preserves_selected_artifact_provenance(tmp_path: Path) -> None:
     data_root = tmp_path / "data"
     database_path = tmp_path / "application.sqlite3"
@@ -321,6 +411,8 @@ def test_live_reasoning_converts_typed_diagnostic_and_rejects_unknown_root_cause
                 HypothesisDraft(
                     hypothesis_id="type-drift",
                     statement="customer_id changed from integer to string.",
+                    cause_code=RootCauseCode.SCHEMA_COLUMN_RENAMED,
+                    evidence_ids=["artifact-metadata"],
                     diagnostic=PlannedDiagnostic(
                         tool=DiagnosticTool.CHECK_TYPE_CONFORMANCE,
                         artifact_id=artifact_id,
@@ -332,7 +424,7 @@ def test_live_reasoning_converts_typed_diagnostic_and_rejects_unknown_root_cause
         ),
         VerificationDraft(
             confirmed=True,
-            root_cause_id="not-a-listed-hypothesis",
+            root_cause_ids=["not-a-listed-hypothesis"],
             reason="The model selected an unknown identifier.",
         ),
     )
@@ -340,7 +432,14 @@ def test_live_reasoning_converts_typed_diagnostic_and_rejects_unknown_root_cause
 
     hypotheses = service.form_hypotheses(
         incident_summary="Rows disappeared after a schema deployment.",
-        evidence=[],
+        evidence=[
+            {
+                "evidence_id": "artifact-metadata",
+                "source": "dataset",
+                "excerpt": "Validated dataset metadata.",
+                "relevance_score": 1.0,
+            }
+        ],
     )
     action = json.loads(hypotheses[0]["diagnostic_action"])
 
@@ -506,9 +605,80 @@ def test_live_remediation_creates_and_registers_working_copy(tmp_path: Path) -> 
     assert output.kind == ArtifactKind.WORKING_COPY
     assert output.storage_path.is_relative_to(resolver.working_dir(case.case_id))
     assert output.storage_path.read_text(encoding="utf-8").startswith("id,value")
+    assert result["validation_passed"] is True
+    assert result["original_sha256"] == source.sha256
+    assert result["output_sha256"] == _sha256(output.storage_path)
+    assert output.sha256 == result["output_sha256"]
+    assert all(check["passed"] for check in result["checks"])
+    assert {check["kind"] for check in result["checks"]} >= {
+        "column_renamed",
+        "original_unchanged",
+        "output_readable",
+        "output_hash_matches",
+        "registration_matches",
+    }
     with sqlite3.connect(database_path) as connection:
         audit = connection.execute(
             "SELECT event_type, actor FROM audit_events WHERE case_id = ? ORDER BY sequence DESC",
             (str(case.case_id),),
         ).fetchone()
     assert audit == ("working_copy_created", "agent_after_human_approval")
+
+
+def test_live_remediation_can_escalate_without_a_mutation_plan(tmp_path: Path) -> None:
+    data_root = tmp_path / "data"
+    database_path = tmp_path / "application.sqlite3"
+    repository = _repository(database_path)
+    case = _case(repository, "Manual escalation case")
+    resolver = CasePathResolver(data_root)
+    source = _artifact(
+        repository=repository,
+        resolver=resolver,
+        case_id=case.case_id,
+        kind=ArtifactKind.DATASET,
+        filename="corrupt.csv",
+        content='id,notes\n1,"truncated\n',
+    )
+    evidence_id = f"artifact:{source.artifact_id}"
+    provider = ScriptedProvider(
+        RemediationDraft(
+            disposition="manual_escalation",
+            title="Quarantine the corrupt source",
+            explanation="The typed remediation DSL cannot reconstruct missing source bytes.",
+            source_artifact_id=source.artifact_id,
+            operations=[],
+            expected_effects=["An operator replaces the corrupt upstream export."],
+            required_post_checks=["Re-ingest a complete source file."],
+            citation_ids=[evidence_id],
+        )
+    )
+    policy = PolicyGateway()
+    service = LiveRemediationService(
+        provider=provider,
+        catalog=ArtifactCatalog(database_path, data_root),
+        executor=RemediationExecutor(policy),
+        policy=policy,
+        resolver=resolver,
+    )
+
+    proposal = service.propose(
+        incident_summary="The CSV ends inside a quoted field.",
+        verification={
+            "confirmed": True,
+            "root_cause_id": "truncated",
+            "reason": "The parser reached EOF inside a quoted field.",
+        },
+        evidence=[
+            {
+                "evidence_id": evidence_id,
+                "source": "corrupt.csv metadata",
+                "excerpt": "Validated source artifact metadata.",
+                "relevance_score": 1.0,
+            }
+        ],
+        diagnostics=[],
+    )
+
+    assert proposal["disposition"] == "manual_escalation"
+    assert proposal["operations"] == []
+    assert "plan_hash" not in proposal

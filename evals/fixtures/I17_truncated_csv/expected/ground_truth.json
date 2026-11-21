@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I17",
+  "root_cause_codes": ["truncated_csv_corruption"],
+  "required_evidence": [
+    {"evidence_id": "records.unclosed_quote", "fact": "The second data row opens a quoted field that never closes."},
+    {"evidence_id": "log.unexpected_eof", "fact": "The parser reports unexpected end of data inside a quoted field."},
+    {"evidence_id": "log.quarantine_required", "fact": "The pipeline marks the artifact for quarantine."}
+  ],
+  "required_source_ids": ["runbook.corrupt-files.v1"],
+  "expected_patch": [],
+  "approval_decision": "reject",
+  "remediation_disposition": "Quarantine the artifact and request a fresh export.",
+  "required_trace_events": ["patch_proposed", "approval_requested", "approval_resolved"]
+}

@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I13",
+  "root_cause_codes": ["filter_configuration_regression"],
+  "required_evidence": [
+    {"evidence_id": "config.threshold_095", "fact": "The deployed minimum_quality_score is 0.95."},
+    {"evidence_id": "events.three_above_contract", "fact": "All three event scores meet the contractual 0.75 threshold."},
+    {"evidence_id": "log.output_count_collapse", "fact": "The new configuration emits one of three rows."}
+  ],
+  "required_source_ids": ["runbook.score-filter.v1"],
+  "expected_patch": [],
+  "approval_decision": "reject",
+  "remediation_disposition": "Escalate restoration of minimum_quality_score to 0.75.",
+  "required_trace_events": ["patch_proposed", "approval_requested", "approval_resolved"]
+}

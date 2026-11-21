@@ -23,7 +23,7 @@ export interface IncidentApi {
   decideApproval(
     approvalId: string,
     decision: "approved" | "rejected"
-  ): Promise<Approval>;
+  ): Promise<Investigation>;
   getEvaluation(): Promise<EvaluationSummary>;
 }
 
@@ -85,6 +85,7 @@ interface BackendInvestigation {
   diagnostics: BackendDiagnostic[];
   verification?: BackendVerification;
   remediation?: {
+    disposition?: "automatic_fix" | "manual_escalation";
     proposal_id: string;
     title: string;
     explanation: string;
@@ -94,6 +95,9 @@ interface BackendInvestigation {
     }>;
   };
   approval_request?: BackendApprovalRequest;
+  approval?: {
+    approved: boolean;
+  };
   remediation_result?: {
     applied: boolean;
     message: string;
@@ -208,9 +212,10 @@ const mapInvestigation = (
 ): Investigation => {
   const request = state.approval_request;
   if (request) approvalContexts.set(state.case_id, request);
-  const approved = state.status === "completed";
-  const rejected = state.status === "rejected";
+  const approved = state.approval?.approved === true;
+  const rejected = state.approval?.approved === false;
   const proposal = state.remediation;
+  const manualEscalation = proposal?.disposition === "manual_escalation";
   const verification = state.verification;
   const rootCause = state.hypotheses.find(
     (hypothesis) => hypothesis.hypothesis_id === verification?.root_cause_id
@@ -221,7 +226,9 @@ const mapInvestigation = (
     phase:
       state.status === "awaiting_approval"
         ? "Approval required"
-        : approved
+        : approved && manualEscalation
+          ? "Manual escalation recorded"
+          : approved
           ? "Remediation verified"
           : stageTitle(state.status),
     timeline: mapTimeline(state.trace),
@@ -235,10 +242,13 @@ const mapInvestigation = (
     approval: {
       id: state.case_id,
       status: approved ? "approved" : rejected ? "rejected" : "pending",
+      manualEscalation,
       planHash: request?.plan_hash ?? "pending",
       sourceHash: request?.source_hash ?? "pending",
       summary: proposal?.title ?? "No remediation proposed yet",
-      impact: "Operations apply only to a working copy; the original remains immutable.",
+      impact: manualEscalation
+        ? "No automated mutation is available; approval records the escalation without creating a working copy."
+        : "Operations apply only to a working copy; the original remains immutable.",
       operations:
         proposal?.operations.map((operation) => ({
           type: operation.operation,
@@ -248,9 +258,19 @@ const mapInvestigation = (
     },
     validation: {
       before: "Original artifact hash preserved",
-      after: approved ? "Working copy created" : "Runs only after approval",
-      status: approved ? "passed" : rejected ? "not_run" : "pending"
-    }
+      after: approved && !manualEscalation
+        ? state.remediation_result?.message ?? "Working copy created"
+        : manualEscalation
+          ? "No automated fix was attempted"
+          : "Runs only after approval",
+      status:
+        approved && !manualEscalation
+          ? "passed"
+          : rejected || manualEscalation
+            ? "not_run"
+            : "pending"
+    },
+    outputArtifactId: state.remediation_result?.output_artifact_id ?? null
   };
 };
 
@@ -314,35 +334,57 @@ const liveApi: IncidentApi = {
       }
     );
     const incidentCase = await jsonRequest<BackendCase>(`/api/cases/${approvalId}`);
-    return mapInvestigation(investigation, mapCase(incidentCase)).approval;
+    return mapInvestigation(investigation, mapCase(incidentCase));
   },
   getEvaluation: async () =>
     jsonRequest<EvaluationSummary>("/api/evaluations/latest")
 };
 
-let mockApproval: Approval = { ...investigationFixture.approval };
-
-const mockApi: IncidentApi = {
-  getDashboard: async () => structuredClone(dashboardFixture),
-  createCase: async (input) => ({
-    id: "inc-new",
-    name: input.name,
-    source: input.dataset.name,
-    status: "investigating",
-    updatedAt: "Just now",
-    confidence: 0,
-    summary: "Artifacts validated. Investigation is ready to start."
-  }),
-  getInvestigation: async () => ({
-    ...structuredClone(investigationFixture),
-    approval: { ...mockApproval }
-  }),
-  decideApproval: async (_approvalId, decision) => {
-    mockApproval = { ...mockApproval, status: decision };
-    return { ...mockApproval };
-  },
-  getEvaluation: async () => structuredClone(evaluationFixture)
+const createMockApi = (): IncidentApi => {
+  let mockApproval: Approval = { ...investigationFixture.approval };
+  return {
+    getDashboard: async () => structuredClone(dashboardFixture),
+    createCase: async (input) => ({
+      id: "inc-new",
+      name: input.name,
+      source: input.dataset.name,
+      status: "investigating",
+      updatedAt: "Just now",
+      confidence: 0,
+      summary: "Artifacts validated. Investigation is ready to start."
+    }),
+    getInvestigation: async () => ({
+      ...structuredClone(investigationFixture),
+      approval: { ...mockApproval }
+    }),
+    decideApproval: async (_approvalId, decision) => {
+      mockApproval = { ...mockApproval, status: decision };
+      const approved = decision === "approved";
+      return {
+        ...structuredClone(investigationFixture),
+        case: {
+          ...structuredClone(investigationFixture.case),
+          status: approved ? "resolved" : "awaiting_approval"
+        },
+        progress: 100,
+        phase: approved ? "Remediation verified" : "Remediation rejected",
+        approval: { ...mockApproval },
+        validation: {
+          ...structuredClone(investigationFixture.validation),
+          after: approved
+            ? "Working copy passed all post-fix checks"
+            : "Not run after rejection",
+          status: approved ? "passed" : "not_run"
+        },
+        outputArtifactId: approved ? "demo-output-artifact" : null
+      };
+    },
+    getEvaluation: async () => structuredClone(evaluationFixture)
+  };
 };
 
-export const createApiClient = (): IncidentApi =>
-  import.meta.env.VITE_API_MODE === "live" ? liveApi : mockApi;
+export type ApiMode = "live" | "mock";
+
+export const createApiClient = (
+  mode: ApiMode = import.meta.env.VITE_API_MODE === "live" ? "live" : "mock"
+): IncidentApi => (mode === "live" ? liveApi : createMockApi());

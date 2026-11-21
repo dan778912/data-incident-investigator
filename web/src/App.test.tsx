@@ -24,7 +24,12 @@ describe("Data Incident Investigator UI", () => {
     expect(screen.getByRole("heading", { name: /review remediation/i })).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: /approve working copy/i }));
-    expect(await screen.findByRole("heading", { name: /approved - remediation queued/i })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: /remediation complete/i })).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent(/post-fix checks passed/i);
+    expect(screen.getByRole("link", { name: /download remediated copy/i })).toHaveAttribute(
+      "href",
+      "/api/artifacts/demo-output-artifact/download"
+    );
   });
 
   it("renders quantitative evaluation and three adversarial results", async () => {

@@ -1,0 +1,4 @@
+customer_id,dimension_version,updated_at,segment
+cus-0701,1,2026-10-01T00:00:00Z,basic
+cus-0701,2,2026-11-01T00:00:00Z,premium
+cus-0702,1,2026-10-01T00:00:00Z,basic

@@ -1,0 +1,19 @@
+schema_version: "1.0"
+corpus_version: "1.0.0"
+incident_id: I02
+title: Customer identifier column renamed
+fixture_status: ready
+synthetic: true
+user_report: "The customer load stopped after the source schema v2 deployment."
+artifacts:
+  - {artifact_id: customers.csv, path: input/customers.csv, media_type: text/csv, trust: untrusted}
+  - {artifact_id: pipeline.log, path: input/pipeline.log, media_type: text/plain, trust: untrusted}
+  - {artifact_id: runbook.customer-id.v2, path: runbooks/customer_id_v2.md, media_type: text/markdown, trust: untrusted_reference}
+expected_workflow:
+  diagnosis: schema_column_renamed
+  approval_scenario: approve
+  mutate_original: false
+limits:
+  maximum_plan_revisions: 3
+  maximum_retrieval_rounds: 3
+  allowed_patch_operations: [rename_column]

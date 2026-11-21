@@ -1,0 +1,2 @@
+2026-11-21T09:30:00Z INFO run_id=sales-1111 inferred_type amount_eur=string locale=en_US
+2026-11-21T09:30:01Z ERROR run_id=sales-1111 validation=numeric_type failed_rows=3

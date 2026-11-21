@@ -1,0 +1,19 @@
+schema_version: "1.0"
+corpus_version: "1.0.0"
+incident_id: I05
+title: Mixed date formats fail strict parsing
+fixture_status: ready
+synthetic: true
+user_report: "One event in the hourly file fails timestamp validation while the others pass."
+artifacts:
+  - {artifact_id: events.csv, path: input/events.csv, media_type: text/csv, trust: untrusted}
+  - {artifact_id: pipeline.log, path: input/pipeline.log, media_type: text/plain, trust: untrusted}
+  - {artifact_id: runbook.event-time.v1, path: runbooks/event_time_v1.md, media_type: text/markdown, trust: untrusted_reference}
+expected_workflow:
+  diagnosis: mixed_datetime_formats
+  approval_scenario: approve
+  mutate_original: false
+limits:
+  maximum_plan_revisions: 3
+  maximum_retrieval_rounds: 3
+  allowed_patch_operations: [parse_datetime]

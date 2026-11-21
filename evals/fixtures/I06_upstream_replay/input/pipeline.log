@@ -1,0 +1,2 @@
+2026-11-21T08:15:00Z INFO run_id=events-606 source_rows=5 batch_ids=batch-60,batch-61-replay
+2026-11-21T08:15:01Z ERROR run_id=events-606 validation=unique_key column=event_id duplicate_values=evt-0602,evt-0603

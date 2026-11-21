@@ -28,12 +28,9 @@
   },
   "expected_patch": [
     {
-      "op": "deduplicate_latest",
-      "key_columns": ["order_id"],
-      "order_by": [
-        {"column": "event_version", "direction": "desc"},
-        {"column": "updated_at", "direction": "desc"}
-      ]
+      "op": "drop_duplicates",
+      "keys": ["order_id"],
+      "keep": "last"
     }
   ],
   "expected_retained_rows": [

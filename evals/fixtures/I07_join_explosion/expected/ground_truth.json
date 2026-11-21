@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I07",
+  "root_cause_codes": ["join_cardinality_explosion"],
+  "required_evidence": [
+    {"evidence_id": "customers.duplicate_dimension_key", "fact": "cus-0701 has two dimension versions."},
+    {"evidence_id": "orders.customer_frequency", "fact": "Two orders reference the duplicated customer key."},
+    {"evidence_id": "log.join_row_explosion", "fact": "The join expands three orders to five output rows."}
+  ],
+  "required_source_ids": ["runbook.dimension-keys.v1"],
+  "expected_patch": [
+    {"op": "drop_duplicates", "keys": ["customer_id"], "keep": "last"}
+  ],
+  "approval_decision": "approve",
+  "remediation_artifact": "customers.csv",
+  "required_trace_events": ["patch_proposed", "approval_requested", "approval_resolved", "patch_applied", "validation_completed"]
+}

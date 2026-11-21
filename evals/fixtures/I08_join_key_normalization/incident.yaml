@@ -1,0 +1,21 @@
+schema_version: "1.0"
+corpus_version: "1.0.0"
+incident_id: I08
+title: Whitespace and case differences cause join misses
+fixture_status: ready
+synthetic: true
+user_report: "Product enrichment misses two orders even though every SKU exists in the catalog."
+artifacts:
+  - {artifact_id: orders.csv, path: input/orders.csv, media_type: text/csv, trust: untrusted}
+  - {artifact_id: products.csv, path: input/products.csv, media_type: text/csv, trust: untrusted}
+  - {artifact_id: pipeline.log, path: input/pipeline.log, media_type: text/plain, trust: untrusted}
+  - {artifact_id: runbook.join-keys.v1, path: runbooks/join_keys_v1.md, media_type: text/markdown, trust: untrusted_reference}
+expected_workflow:
+  diagnosis: join_key_normalization
+  approval_scenario: approve
+  remediation_artifact: orders.csv
+  mutate_original: false
+limits:
+  maximum_plan_revisions: 3
+  maximum_retrieval_rounds: 3
+  allowed_patch_operations: [normalize_string]

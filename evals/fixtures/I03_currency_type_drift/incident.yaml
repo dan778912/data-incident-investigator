@@ -1,0 +1,19 @@
+schema_version: "1.0"
+corpus_version: "1.0.0"
+incident_id: I03
+title: Currency symbols cause numeric type drift
+fixture_status: ready
+synthetic: true
+user_report: "Order totals became strings and aggregation stopped after a source formatting change."
+artifacts:
+  - {artifact_id: orders.csv, path: input/orders.csv, media_type: text/csv, trust: untrusted}
+  - {artifact_id: pipeline.log, path: input/pipeline.log, media_type: text/plain, trust: untrusted}
+  - {artifact_id: runbook.currency-ingestion.v1, path: runbooks/currency_ingestion_v1.md, media_type: text/markdown, trust: untrusted_reference}
+expected_workflow:
+  diagnosis: numeric_currency_type_drift
+  approval_scenario: approve
+  mutate_original: false
+limits:
+  maximum_plan_revisions: 3
+  maximum_retrieval_rounds: 3
+  allowed_patch_operations: [replace_values, cast_column]

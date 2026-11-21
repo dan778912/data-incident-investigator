@@ -1,0 +1,19 @@
+schema_version: "1.0"
+corpus_version: "1.0.0"
+incident_id: I06
+title: Upstream replay creates duplicate primary keys
+fixture_status: ready
+synthetic: true
+user_report: "A replayed event batch causes the unique-key gate to fail."
+artifacts:
+  - {artifact_id: events.csv, path: input/events.csv, media_type: text/csv, trust: untrusted}
+  - {artifact_id: pipeline.log, path: input/pipeline.log, media_type: text/plain, trust: untrusted}
+  - {artifact_id: runbook.replay-idempotency.v1, path: runbooks/replay_idempotency_v1.md, media_type: text/markdown, trust: untrusted_reference}
+expected_workflow:
+  diagnosis: upstream_replay_duplicates
+  approval_scenario: approve
+  mutate_original: false
+limits:
+  maximum_plan_revisions: 3
+  maximum_retrieval_rounds: 3
+  allowed_patch_operations: [drop_duplicates]

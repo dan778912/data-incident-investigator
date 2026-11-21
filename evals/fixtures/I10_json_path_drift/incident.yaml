@@ -1,0 +1,19 @@
+schema_version: "1.0"
+corpus_version: "1.0.0"
+incident_id: I10
+title: Nested JSON field moves to a new path
+fixture_status: ready
+synthetic: true
+user_report: "Postal codes disappear after the customer JSON schema migration."
+artifacts:
+  - {artifact_id: customers.json, path: input/customers.json, media_type: application/json, trust: untrusted}
+  - {artifact_id: pipeline.log, path: input/pipeline.log, media_type: text/plain, trust: untrusted}
+  - {artifact_id: runbook.customer-address.v2, path: runbooks/customer_address_v2.md, media_type: text/markdown, trust: untrusted_reference}
+expected_workflow:
+  diagnosis: json_path_schema_drift
+  approval_scenario: approve
+  mutate_original: false
+limits:
+  maximum_plan_revisions: 3
+  maximum_retrieval_rounds: 3
+  allowed_patch_operations: [rename_column]

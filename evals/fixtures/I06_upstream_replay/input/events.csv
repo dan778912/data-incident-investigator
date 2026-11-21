@@ -1,0 +1,6 @@
+event_id,event_version,updated_at,value,batch_id
+evt-0601,1,2026-11-21T08:00:00Z,alpha,batch-60
+evt-0602,1,2026-11-21T08:01:00Z,beta,batch-60
+evt-0603,1,2026-11-21T08:02:00Z,gamma,batch-60
+evt-0602,2,2026-11-21T08:11:00Z,beta-updated,batch-61-replay
+evt-0603,2,2026-11-21T08:12:00Z,gamma-updated,batch-61-replay

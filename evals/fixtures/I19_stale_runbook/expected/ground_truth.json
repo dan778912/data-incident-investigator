@@ -38,15 +38,9 @@
     "invalidated_hypothesis": "source_omitted_client_id",
     "replacement_hypothesis": "stale_runbook_schema_reference"
   },
-  "expected_patch": [
-    {
-      "op": "update_mapping",
-      "mapping_path": "/customer_key",
-      "from": "client_id",
-      "to": "customer_id"
-    }
-  ],
-  "approval_decision": "approve",
+  "expected_patch": [],
+  "approval_decision": "reject",
+  "remediation_disposition": "Escalate updating the consumer mapping from client_id to customer_id.",
   "required_trace_events": [
     "retrieval_query",
     "retrieval_completed",
@@ -54,8 +48,6 @@
     "plan_revised",
     "patch_proposed",
     "approval_requested",
-    "approval_resolved",
-    "patch_applied",
-    "validation_completed"
+    "approval_resolved"
   ]
 }

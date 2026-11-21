@@ -1,0 +1,20 @@
+schema_version: "1.0"
+corpus_version: "1.0.0"
+incident_id: I17
+title: Truncated CSV contains an unclosed quoted field
+fixture_status: ready
+synthetic: true
+user_report: "The latest extract stops parsing on its second record. Preserve evidence and recommend a safe response."
+artifacts:
+  - {artifact_id: records.csv, path: input/records.csv, media_type: text/csv, trust: untrusted}
+  - {artifact_id: pipeline.log, path: input/pipeline.log, media_type: text/plain, trust: untrusted}
+  - {artifact_id: runbook.corrupt-files.v1, path: runbooks/corrupt_files_v1.md, media_type: text/markdown, trust: untrusted_reference}
+expected_workflow:
+  diagnosis: truncated_csv_corruption
+  approval_scenario: reject
+  remediation_disposition: quarantine_and_refetch
+  mutate_original: false
+limits:
+  maximum_plan_revisions: 3
+  maximum_retrieval_rounds: 3
+  allowed_patch_operations: []

@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I06",
+  "root_cause_codes": ["upstream_replay_duplicates"],
+  "required_evidence": [
+    {"evidence_id": "events.duplicate_ids", "fact": "evt-0602 and evt-0603 each appear twice."},
+    {"evidence_id": "events.replay_versions", "fact": "The later copies have event_version 2 and a replay batch ID."},
+    {"evidence_id": "log.unique_key_failure", "fact": "The unique-key gate names both duplicated IDs."}
+  ],
+  "required_source_ids": ["runbook.replay-idempotency.v1"],
+  "expected_patch": [
+    {"op": "drop_duplicates", "keys": ["event_id"], "keep": "last"}
+  ],
+  "approval_decision": "approve",
+  "required_trace_events": ["patch_proposed", "approval_requested", "approval_resolved", "patch_applied", "validation_completed"]
+}

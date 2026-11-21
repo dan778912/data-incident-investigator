@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I05",
+  "root_cause_codes": ["mixed_datetime_formats"],
+  "required_evidence": [
+    {"evidence_id": "log.one_datetime_failure", "fact": "Exactly one of three rows fails strict RFC 3339 parsing."},
+    {"evidence_id": "events.mixed_formats", "fact": "Rows use both RFC 3339 and a month/day AM format."},
+    {"evidence_id": "diagnostic.second_row_parse_failure", "fact": "The second row is the only failed timestamp."}
+  ],
+  "required_source_ids": ["runbook.event-time.v1"],
+  "expected_patch": [
+    {"op": "parse_datetime", "column": "created_at", "accepted_formats": ["rfc3339", "MM/DD/YYYY hh:mm AM UTC"], "timezone": "UTC", "on_error": "reject"}
+  ],
+  "approval_decision": "approve",
+  "required_trace_events": ["patch_proposed", "approval_requested", "approval_resolved", "patch_applied", "validation_completed"]
+}

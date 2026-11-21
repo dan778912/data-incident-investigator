@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I02",
+  "root_cause_codes": ["schema_column_renamed"],
+  "required_evidence": [
+    {"evidence_id": "log.missing_customer_id", "fact": "Validation fails because customer_id is absent."},
+    {"evidence_id": "customers.customerId_present", "fact": "The input contains customerId in every row."},
+    {"evidence_id": "runbook.customer-id.v2_current", "fact": "The current migration contract maps customerId to customer_id."}
+  ],
+  "required_source_ids": ["runbook.customer-id.v2"],
+  "expected_patch": [
+    {"op": "rename_column", "from_name": "customerId", "to_name": "customer_id"}
+  ],
+  "approval_decision": "approve",
+  "required_trace_events": ["patch_proposed", "approval_requested", "approval_resolved", "patch_applied", "validation_completed"]
+}

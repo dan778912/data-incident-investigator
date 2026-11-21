@@ -24,6 +24,8 @@ class EvidenceRecord(TypedDict):
     source: str
     excerpt: str
     relevance_score: float
+    source_id: NotRequired[str]
+    retrieval_round: NotRequired[int]
 
 
 class EvidenceAssessment(TypedDict):
@@ -40,6 +42,8 @@ class HypothesisRecord(TypedDict):
     statement: str
     diagnostic_action: str
     expected_signal: str
+    cause_code: NotRequired[str]
+    evidence_ids: NotRequired[list[str]]
 
 
 class DiagnosticRecord(TypedDict):
@@ -57,6 +61,10 @@ class VerificationRecord(TypedDict):
     confirmed: bool
     root_cause_id: str | None
     reason: str
+    root_cause_code: NotRequired[str | None]
+    root_cause_ids: NotRequired[list[str]]
+    root_cause_codes: NotRequired[list[str]]
+    evidence_ids: NotRequired[list[str]]
 
 
 class PatchOperation(TypedDict):
@@ -81,6 +89,7 @@ class RemediationRecord(TypedDict):
     title: str
     explanation: str
     operations: list[PatchOperation]
+    disposition: NotRequired[Literal["automatic_fix", "manual_escalation"]]
     source_artifact_id: NotRequired[str]
     source_sha256: NotRequired[str]
     expected_effects: NotRequired[list[str]]
@@ -116,12 +125,38 @@ class ApprovalRecord(ApprovalDecisionRecord):
     decided_at: int
 
 
+class PostFixCheckRecord(TypedDict):
+    """Structured result from a deterministic remediation postcondition."""
+
+    kind: Literal[
+        "column_renamed",
+        "column_cast",
+        "missing_values_filled",
+        "duplicates_removed",
+        "datetime_parsed",
+        "strings_normalized",
+        "values_replaced",
+        "original_unchanged",
+        "output_readable",
+        "output_hash_matches",
+        "registration_matches",
+    ]
+    operation_index: int | None
+    target: str
+    passed: bool
+    metrics: dict[str, JSONScalar]
+
+
 class RemediationResult(TypedDict):
     """The result of applying a proposal to a working copy."""
 
     applied: bool
     message: str
     output_artifact_id: str | None
+    original_sha256: str
+    output_sha256: str
+    validation_passed: bool
+    checks: list[PostFixCheckRecord]
 
 
 class TraceEvent(TypedDict):

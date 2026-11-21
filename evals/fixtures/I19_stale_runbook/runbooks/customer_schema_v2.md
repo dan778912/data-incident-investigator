@@ -14,5 +14,5 @@ longer supplies `client_id`. Downstream consumers must update their mapping from
 `client_id` to `customer_id`; they must not rename or rewrite the source export.
 
 The source schema and data should both be checked before changing a mapping. A
-valid repair preserves all customer rows and requires approval before updating
-the working copy of the consumer configuration.
+mapping change is outside the approved data-remediation DSL. Reject a data patch,
+preserve all source artifacts, and escalate the consumer-configuration update.
