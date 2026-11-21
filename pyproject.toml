@@ -40,6 +40,7 @@ dev = [
 [project.scripts]
 dii-api = "data_incident_investigator.api.main:run"
 dii-eval = "data_incident_investigator.evaluation.cli:main"
+dii-freeze-evals = "data_incident_investigator.evaluation.freeze:main"
 dii-run-evals = "data_incident_investigator.evaluation.run_cli:main"
 
 [tool.setuptools]

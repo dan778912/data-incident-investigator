@@ -174,6 +174,17 @@ The provider-neutral grader can also grade previously captured JSONL observation
   --output evals\results\YYYY-MM-DD\report.md
 ```
 
+After reviewing the live and adversarial outputs, freeze only sanitized, grade-relevant evidence
+into the commit-ready submission directory. The command refuses existing destinations, credentials,
+and unresolved local paths, and writes a SHA-256 manifest:
+
+```powershell
+.\.venv\Scripts\dii-freeze-evals.exe `
+  --live-run evals\results\<live-run> `
+  --adversarial-run evals\results\<adversarial-run> `
+  --output submission\evaluation
+```
+
 Reported capstone metrics will come from dated live-model operating-system runs, not the fake
 provider or UI fixtures.
 

@@ -88,5 +88,15 @@ chosen live summary so the application UI displays the executed results:
 
 The results directory is excluded from this scaffold except for its existing
 placeholder so generated evidence is never confused with source fixtures. The
-sanitized, release-candidate snapshot will be copied into `submission/` after
-the run is reviewed for secrets and local paths.
+sanitized, release-candidate snapshot is copied only after the run is reviewed:
+
+```powershell
+.\.venv\Scripts\dii-freeze-evals.exe `
+  --live-run evals\results\<live-run> `
+  --adversarial-run evals\results\<adversarial-run> `
+  --output submission\evaluation
+```
+
+The freezer excludes runtime databases and raw application state, normalizes
+local paths, rejects likely credentials, and writes hashes for every retained
+file in `MANIFEST.json`.
