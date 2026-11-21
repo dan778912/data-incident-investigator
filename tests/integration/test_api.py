@@ -10,7 +10,12 @@ from data_incident_investigator.core.config import Settings
 
 
 def _client(tmp_path: Path) -> TestClient:
-    settings = Settings(data_dir=tmp_path, app_env="test", max_upload_bytes=1000)
+    settings = Settings(
+        data_dir=tmp_path,
+        app_env="test",
+        llm_provider="fake",
+        max_upload_bytes=1000,
+    )
     return TestClient(create_app(settings))
 
 
@@ -152,6 +157,39 @@ def test_investigation_refines_replans_and_requires_bound_approval(tmp_path: Pat
             ).status_code
             == 409
         )
+
+
+def test_api_applies_configured_retrieval_limit(tmp_path: Path) -> None:
+    settings = Settings(
+        data_dir=tmp_path,
+        app_env="test",
+        llm_provider="fake",
+        max_upload_bytes=1000,
+        max_retrieval_rounds=1,
+    )
+    with TestClient(create_app(settings)) as client:
+        case_id = client.post(
+            "/api/cases",
+            json={
+                "name": "Bounded retrieval",
+                "incident_summary": "Orders dropped after a schema deployment.",
+            },
+        ).json()["case_id"]
+        artifact_id = client.post(
+            f"/api/cases/{case_id}/artifacts",
+            data={"kind": "dataset"},
+            files={"file": ("orders.csv", b"customer_id,total\n1,10\n", "text/csv")},
+        ).json()["artifact_id"]
+
+        started = client.post(
+            f"/api/cases/{case_id}/analyze",
+            json={"artifact_ids": [artifact_id]},
+        )
+
+        assert started.status_code == 200
+        investigation = started.json()
+        assert investigation["retrieval_round"] == 1
+        assert "refine_query" not in {item["stage"] for item in investigation["trace"]}
 
 
 def test_investigation_rejects_missing_or_cross_case_artifacts(tmp_path: Path) -> None:

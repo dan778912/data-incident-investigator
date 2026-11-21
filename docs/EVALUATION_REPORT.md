@@ -89,8 +89,8 @@ charge.
 ## Reproduction
 
 ```powershell
-dii-run-evals --limit 20
-python -m evals.adversarial_runner `
+.\.venv\Scripts\dii-run-evals.exe --limit 20
+.\.venv\Scripts\python.exe -m evals.adversarial_runner `
   --summary evals\results\<live-run>\summary.json
 ```
 

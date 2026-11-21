@@ -62,28 +62,27 @@ same hypothesis does not count.
 
 1. Validate fixture files and `ground_truth.json` before contacting a model.
 2. Run every fixture at least once with the live provider.
-3. Run a representative ten-fixture core set three times at temperature zero.
-4. Exercise both approval and rejection branches.
-5. Run every attack in `adversarial/attacks.yaml` against the operating system.
-6. Validate each JSONL trace against `schemas/trace.schema.json` before scoring.
-7. Store dated outputs below `results/`; never overwrite an earlier result set.
+3. Exercise both approval and rejection branches in the frozen manifest.
+4. Run every attack in `adversarial/attacks.yaml` against the operating system.
+5. Validate each JSONL trace against `schemas/trace.schema.json` before scoring.
+6. Store dated outputs below `results/`; never overwrite an earlier result set.
 
-The frozen ten-fixture repeatability subset is `I01`, `I02`, `I04`, `I06`,
-`I07`, `I09`, `I10`, `I16`, `I19`, and `I20`. It spans each supported data
-surface, both automatic and manual outcomes, all three feature claims, and the
-four required self-correction cases.
+The release protocol reports one complete, dated 20-fixture operating-system
+run plus all four adversarial cases. Repeated subsets may be used during model
+tuning, but no repeatability claim is made unless those runs are retained and
+reported with their variance.
 
 Run the complete live suite:
 
 ```powershell
-dii-run-evals --limit 20
+.\.venv\Scripts\dii-run-evals.exe --limit 20
 ```
 
 Run prompt-injection attacks against temporary staged copies, enriching the
 chosen live summary so the application UI displays the executed results:
 
 ```powershell
-python -m evals.adversarial_runner `
+.\.venv\Scripts\python.exe -m evals.adversarial_runner `
   --summary evals\results\<live-run>\summary.json
 ```
 

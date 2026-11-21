@@ -158,6 +158,8 @@ def create_app(
             graph = build_investigation_graph(
                 workflow_services,
                 checkpointer=checkpointer,
+                max_retrieval_rounds=configured.max_retrieval_rounds,
+                max_plan_revisions=configured.max_plan_revisions,
             )
             application.state.container = AppContainer(
                 settings=configured,

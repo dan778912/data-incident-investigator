@@ -27,6 +27,7 @@ from data_incident_investigator.workflow.state import (
     ApprovalRequestRecord,
     DiagnosticRecord,
     EvidenceRecord,
+    HypothesisRecord,
     RemediationRecord,
     RemediationResult,
     VerificationRecord,
@@ -99,6 +100,98 @@ def test_refines_evidence_replans_and_applies_only_after_bound_approval() -> Non
     assert bundle.remediation.apply_calls == 1
     assert bundle.remediation.approvals == [completed["approval"]]
     json.dumps(completed, allow_nan=False)
+
+
+def test_configured_retrieval_limit_is_enforced_by_compiled_graph() -> None:
+    bundle = build_demo_services(secret_key=DEMO_SECRET)
+    graph = build_investigation_graph(
+        bundle.workflow,
+        checkpointer=InMemorySaver(),
+        max_retrieval_rounds=1,
+        max_plan_revisions=2,
+    )
+
+    pending = graph.invoke(
+        initial_input("case-configured-retrieval-limit"),
+        {"configurable": {"thread_id": "case-configured-retrieval-limit"}},
+    )
+
+    assert pending["status"] == "awaiting_approval"
+    assert pending["retrieval_round"] == 1
+    assert pending["max_retrieval_rounds"] == 1
+    assert bundle.retrieval.queries == ["orders join row loss null customer_id"]
+    assert "refine_query" not in {item["stage"] for item in pending["trace"]}
+
+
+def test_configured_plan_revision_limit_stops_unconfirmed_workflow() -> None:
+    bundle = build_demo_services(secret_key=DEMO_SECRET)
+
+    class RejectingDiagnosticService:
+        def run(
+            self,
+            *,
+            hypotheses: list[HypothesisRecord],
+            artifact_ids: list[str],
+        ) -> list[DiagnosticRecord]:
+            hypothesis = hypotheses[0]
+            return [
+                {
+                    "hypothesis_id": hypothesis["hypothesis_id"],
+                    "action": hypothesis["diagnostic_action"],
+                    "observed_signal": "configured test contradiction",
+                    "supports_hypothesis": False,
+                }
+            ]
+
+    services = WorkflowServices(
+        retrieval=bundle.retrieval,
+        reasoning=bundle.reasoning,
+        diagnostics=RejectingDiagnosticService(),
+        remediation=bundle.remediation,
+        approval=bundle.approval,
+    )
+    graph = build_investigation_graph(
+        services,
+        checkpointer=InMemorySaver(),
+        max_retrieval_rounds=3,
+        max_plan_revisions=1,
+    )
+
+    completed = graph.invoke(
+        initial_input("case-configured-revision-limit"),
+        {"configurable": {"thread_id": "case-configured-revision-limit"}},
+    )
+
+    assert completed["status"] == "unresolved"
+    assert completed["plan_revision"] == 1
+    assert completed["max_plan_revisions"] == 1
+    assert "__interrupt__" not in completed
+    assert bundle.remediation.apply_calls == 0
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("max_retrieval_rounds", 0, ValueError),
+        ("max_retrieval_rounds", True, TypeError),
+        ("max_plan_revisions", 6, ValueError),
+    ],
+)
+def test_graph_rejects_invalid_direct_loop_limits(
+    field: str,
+    value: object,
+    error: type[Exception],
+) -> None:
+    bundle = build_demo_services(secret_key=DEMO_SECRET)
+    limits = {"max_retrieval_rounds": 3, "max_plan_revisions": 2, field: value}
+
+    with pytest.raises(error):
+        build_investigation_graph(
+            bundle.workflow,
+            checkpointer=InMemorySaver(),
+            max_retrieval_rounds=cast(int, limits["max_retrieval_rounds"]),
+            max_plan_revisions=cast(int, limits["max_plan_revisions"]),
+        )
 
 
 def test_rejection_consumes_approval_without_calling_apply() -> None:

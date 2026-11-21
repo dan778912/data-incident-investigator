@@ -23,6 +23,7 @@ from .state import (
 
 MAX_RETRIEVAL_ROUNDS = 3
 MAX_PLAN_REVISIONS = 2
+MAX_CONFIGURED_LOOP_LIMIT = 5
 
 
 class WorkflowStateError(RuntimeError):
@@ -45,6 +46,14 @@ class ApprovalDecision(BaseModel):
     issued_at: int
     expires_at: int
     binding_mac: str = Field(min_length=64, max_length=64)
+
+
+def _validate_loop_limit(value: int, *, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{label} must be an integer")
+    if not 1 <= value <= MAX_CONFIGURED_LOOP_LIMIT:
+        raise ValueError(f"{label} must be between 1 and {MAX_CONFIGURED_LOOP_LIMIT}")
+    return value
 
 
 def _json_clone[T](value: T, *, label: str) -> T:
@@ -96,6 +105,8 @@ def build_investigation_graph(
     services: WorkflowServices,
     *,
     checkpointer: BaseCheckpointSaver[Any],
+    max_retrieval_rounds: int = MAX_RETRIEVAL_ROUNDS,
+    max_plan_revisions: int = MAX_PLAN_REVISIONS,
 ) -> CompiledStateGraph[InvestigationState, None, InvestigationInput, InvestigationState]:
     """Build and compile the bounded workflow with required durable checkpointing.
 
@@ -103,6 +114,15 @@ def build_investigation_graph(
     Production code should inject a file-backed or server-backed implementation;
     tests may inject ``InMemorySaver``.
     """
+
+    retrieval_limit = _validate_loop_limit(
+        max_retrieval_rounds,
+        label="max_retrieval_rounds",
+    )
+    revision_limit = _validate_loop_limit(
+        max_plan_revisions,
+        label="max_plan_revisions",
+    )
 
     def initialize(state: InvestigationState) -> dict[str, object]:
         case_id = _require_text(state.get("case_id"), label="case_id")
@@ -118,9 +138,9 @@ def build_investigation_graph(
             "incident_summary": summary,
             "artifact_ids": [item.strip() for item in artifact_ids],
             "retrieval_round": 0,
-            "max_retrieval_rounds": MAX_RETRIEVAL_ROUNDS,
+            "max_retrieval_rounds": retrieval_limit,
             "plan_revision": 0,
-            "max_plan_revisions": MAX_PLAN_REVISIONS,
+            "max_plan_revisions": revision_limit,
             "status": "retrieving",
             "trace": [
                 _event(
@@ -144,7 +164,7 @@ def build_investigation_graph(
 
     def retrieve_evidence(state: InvestigationState) -> dict[str, object]:
         round_number = state.get("retrieval_round", 0) + 1
-        if round_number > MAX_RETRIEVAL_ROUNDS:
+        if round_number > retrieval_limit:
             raise WorkflowStateError("retrieval loop exceeded its hard limit")
         records = services.retrieval.search(
             query=state["retrieval_query"],
@@ -298,7 +318,7 @@ def build_investigation_graph(
 
     def revise_hypotheses(state: InvestigationState) -> dict[str, object]:
         revision = state["plan_revision"] + 1
-        if revision > MAX_PLAN_REVISIONS:
+        if revision > revision_limit:
             raise WorkflowStateError("hypothesis revision loop exceeded its hard limit")
         records = services.reasoning.revise_hypotheses(
             incident_summary=state["incident_summary"],

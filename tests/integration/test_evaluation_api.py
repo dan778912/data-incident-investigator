@@ -11,7 +11,7 @@ from data_incident_investigator.core.config import Settings
 
 def test_latest_evaluation_endpoint_is_honest_before_a_suite_run(tmp_path: Path) -> None:
     results_dir = tmp_path / "evaluation-results"
-    settings = Settings(data_dir=tmp_path / "data", app_env="test")
+    settings = Settings(data_dir=tmp_path / "data", app_env="test", llm_provider="fake")
 
     with TestClient(create_app(settings, evaluation_results_dir=results_dir)) as client:
         response = client.get("/api/evaluations/latest")
@@ -77,7 +77,7 @@ def test_latest_evaluation_endpoint_returns_real_generated_summary(tmp_path: Pat
         ),
         encoding="utf-8",
     )
-    settings = Settings(data_dir=tmp_path / "data", app_env="test")
+    settings = Settings(data_dir=tmp_path / "data", app_env="test", llm_provider="fake")
 
     with TestClient(create_app(settings, evaluation_results_dir=results_dir)) as client:
         response = client.get("/api/evaluations/latest")
@@ -96,7 +96,7 @@ def test_latest_evaluation_endpoint_rejects_malformed_summary(tmp_path: Path) ->
     summary_path = results_dir / "latest" / "summary.json"
     summary_path.parent.mkdir(parents=True)
     summary_path.write_text('{"run_count": 2, "metrics": []}', encoding="utf-8")
-    settings = Settings(data_dir=tmp_path / "data", app_env="test")
+    settings = Settings(data_dir=tmp_path / "data", app_env="test", llm_provider="fake")
 
     with TestClient(create_app(settings, evaluation_results_dir=results_dir)) as client:
         response = client.get("/api/evaluations/latest")

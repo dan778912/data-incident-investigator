@@ -136,7 +136,7 @@ The initial read-only registry contains:
 - Log-signature extraction.
 - Column-distribution comparison.
 
-Each tool has a Pydantic argument model, row and runtime limits, and a case-scoped artifact resolver. The gateway rejects unknown tools, unexpected arguments, artifacts outside the current case, and operations that exceed configured limits. The model never receives an operating-system path and never directly accesses the filesystem.
+Each tool has a Pydantic argument model, bounded row/text reads, and a case-scoped artifact resolver. The gateway rejects unknown tools, unexpected arguments, artifacts outside the current case, and requests that exceed those bounds. The model never receives an operating-system path and never directly accesses the filesystem. Per-tool wall-clock timeouts are not implemented in this release; diagnostics operate only on locally uploaded artifacts and the workflow itself has bounded loops.
 
 ## Safe Remediation Boundary
 
@@ -178,7 +178,7 @@ Core records include:
 - Diagnostic steps, observations, and revision reasons.
 - Retrieval rounds, evidence grades, and citations.
 - Remediation plans, approvals, and validation results.
-- Model token/cost snapshots and graph trace events used by the UI and evaluator.
+- Graph trace events used by the UI and evaluator. Model token/cost usage is aggregated in memory for the active process and persisted in dated evaluation outputs, not in the application database.
 
 API keys are never stored in the database or repository. They are injected at runtime through environment variables.
 
@@ -222,7 +222,7 @@ Safety is layered across the real attack surfaces:
 - Retrieved instructions treated as data, not control messages.
 - Immutable originals and a hash-bound approval boundary.
 - CSV export protections for spreadsheet formulas.
-- Rate, loop, row, operation, and runtime limits.
+- Loop, row/text-read, upload-size, and remediation-operation limits. Provider-side rate limits are surfaced as call failures; this release does not implement an application rate limiter or per-tool wall-clock timeout.
 - Structured, sanitized, append-only audit events.
 
 At least three prompt-injection attacks will be executed against different surfaces: a log file, a retrieved runbook, and dataset cell content. The system will preserve the injected text, actual trace, outcome, and mitigation evidence.

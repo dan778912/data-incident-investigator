@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     max_upload_bytes: int = Field(default=10 * 1024 * 1024, ge=1, le=100 * 1024 * 1024)
     max_dataset_rows: int = Field(default=100_000, ge=1, le=1_000_000)
     max_retrieval_rounds: int = Field(default=3, ge=1, le=5)
-    max_plan_revisions: int = Field(default=3, ge=1, le=5)
+    max_plan_revisions: int = Field(default=2, ge=1, le=5)
     max_patch_operations: int = Field(default=5, ge=1, le=10)
 
     @field_validator("data_dir", mode="before")

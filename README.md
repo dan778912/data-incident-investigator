@@ -6,9 +6,10 @@ dataset plus optional logs, schemas, and runbooks; the workflow retrieves eviden
 revises hypotheses, cites its sources, and pauses for human approval before creating a remediated
 working copy.
 
-This is a solo capstone project targeted for December 10, 2026. It is intentionally narrow: the
-agent can investigate uploaded artifacts, but it cannot run arbitrary code, access production
-systems, or modify an original dataset.
+This is a solo capstone project targeted for December 10, 2026 and built from scratch for Assignment
+4, not continued from Assignment 3. It is intentionally narrow: the agent can investigate uploaded
+artifacts, but it cannot run arbitrary code, access production systems, or modify an original
+dataset.
 
 ## Capstone feature claims
 
@@ -122,6 +123,13 @@ The container builds the React UI, installs the Python service, runs as a non-ro
 localhost port 8000, uses a read-only root filesystem, and persists cases/checkpoints in a named
 volume. Docker does not require another LLM or create extra API charges by itself.
 
+This local single-container deployment is a justified alternative to a hosted service: incident
+artifacts may be sensitive, so uploads and SQLite/FTS indexes stay on the operator's machine; the
+LangGraph workflow, approval ledger, and UI still run as one reproducible service; and the named
+volume preserves cases, approvals, and checkpoints across container restarts. The tradeoff is that
+this release targets one durable instance rather than horizontal scaling or managed high
+availability.
+
 ## Verification
 
 Run the complete local quality gate:
@@ -144,7 +152,7 @@ npm --prefix web run build
 Run the real 20-case workflow suite after setting `OPENAI_API_KEY` in the ignored `.env` file:
 
 ```powershell
-dii-run-evals --limit 20
+.\.venv\Scripts\dii-run-evals.exe --limit 20
 ```
 
 The command writes dated raw states, schema-validated traces, observations, a machine-readable
@@ -153,14 +161,14 @@ against staged copies of the frozen fixtures, then merge its frontend records in
 summary:
 
 ```powershell
-python -m evals.adversarial_runner `
+.\.venv\Scripts\python.exe -m evals.adversarial_runner `
   --summary evals\results\<live-run>\summary.json
 ```
 
 The provider-neutral grader can also grade previously captured JSONL observations:
 
 ```powershell
-dii-eval --manifest evals/manifest.jsonl `
+.\.venv\Scripts\dii-eval.exe --manifest evals/manifest.jsonl `
   --observations path\to\observations.jsonl `
   --format markdown `
   --output evals\results\YYYY-MM-DD\report.md
@@ -196,9 +204,17 @@ Interactive API documentation is available at `/docs` while the service is runni
 
 ## Capability-to-Code Map
 
-The submission-grade [capability-to-code map](docs/CAPABILITY_MAP.md) ties every advanced feature,
-enforceable guardrail, evaluation claim, persistence boundary, and deployment claim to exact source
-lines, key classes/functions, and scoped verification notes.
+| Category | Claimed Feature / Guardrail / Eval | Source File(s) & Line Numbers | Key Class / Function | Notes / Scope |
+|---|---|---|---|---|
+| Advanced Feature 1 | Explicit planning and self-correction | [graph.py L242-L348](src/data_incident_investigator/workflow/graph.py#L242-L348); [graph.py L540-L551](src/data_incident_investigator/workflow/graph.py#L540-L551); [live.py L427-L554](src/data_incident_investigator/services/live.py#L427-L554) | `form_hypotheses()`, `verify_hypotheses()`, `revise_hypotheses()` | Falsifiable hypotheses, deterministic diagnostics, verification, and a bounded revision loop with traceable replacements. |
+| Advanced Feature 2 | Iterative retrieval-augmented investigation | [graph.py L104-L240](src/data_incident_investigator/workflow/graph.py#L104-L240); [fts.py L97-L218](src/data_incident_investigator/retrieval/fts.py#L97-L218); [live.py L302-L425](src/data_incident_investigator/services/live.py#L302-L425) | `build_investigation_graph()`, `FtsRunbookRepository`, `LiveRetrievalService` | Configurable bounded query refinement over selected artifacts with redacted, versioned, round-tagged evidence and citations. |
+| Advanced Feature 3 | Durable human-in-the-loop approval | [graph.py L378-L478](src/data_incident_investigator/workflow/graph.py#L378-L478); [approval.py L57-L230](src/data_incident_investigator/services/approval.py#L57-L230); [main.py L407-L443](src/data_incident_investigator/api/main.py#L407-L443) | `approval_gate()`, `HMACApprovalBindingService`, `SQLiteApprovalLedger`, `decide_approval()` | Durable interrupt before mutation; approval is hash-bound, expiring, and atomically single-use. |
+| Guardrails | Typed diagnostics and remediation, working-copy-only execution, deterministic post-fix checks | [policy.py L18-L55](src/data_incident_investigator/security/policy.py#L18-L55); [remediation.py L16-L160](src/data_incident_investigator/domain/remediation.py#L16-L160); [executor.py L56-L317](src/data_incident_investigator/remediation/executor.py#L56-L317) | `PolicyGateway`, `RemediationPlan`, `RemediationExecutor.apply()` | No arbitrary tools or code execution; out-of-scope fixes escalate manually, and failed final-state or integrity checks delete the output. |
+| Adversarial Evals | Four prompt-injection attacks executed through the live workflow | [adversarial_runner.py L202-L452](evals/adversarial_runner.py#L202-L452); [adversarial_runner.py L506-L601](evals/adversarial_runner.py#L506-L601); [adversarial_runner.py L779-L949](evals/adversarial_runner.py#L779-L949) | `stage_attack()`, `AdversarialEvaluationRunner`, `classify_attack()` | Exact log, runbook, cell, and schema injections; fail-closed classification checks prohibited capabilities, approval ordering, canary leakage, and original hashes. |
+| Evaluation Harness | Frozen 20-case end-to-end suite with computable metrics and validated traces | [live_runner.py L124-L406](evals/live_runner.py#L124-L406); [graders.py L16-L394](evals/harness/graders.py#L16-L394); [trace.py L19-L80](evals/harness/trace.py#L19-L80) | `LiveEvaluationRunner`, `grade_suite()`, `TraceValidator` | Measures diagnosis, repair, self-correction, RAG, HITL, safety, latency, tokens, and estimated cost. |
+| Deployment / Persistence | Single durable container with SQLite/FTS/checkpoint persistence and CI | [main.py L94-L178](src/data_incident_investigator/api/main.py#L94-L178); [Dockerfile L3-L68](Dockerfile#L3-L68); [compose.yaml L3-L45](compose.yaml#L3-L45); [ci.yml L16-L103](.github/workflows/ci.yml#L16-L103) | `create_app()`, `AsyncSqliteSaver`, Compose `app`, CI jobs | Named-volume persistence, non-root read-only container, health check, and backend/frontend/container quality gates; intentionally single-instance rather than multi-replica. |
+
+The [detailed capability-to-code map](docs/CAPABILITY_MAP.md) is the supplementary evidence index for additional guardrails, evaluation integration, cost accounting, and scoped verification notes.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the component and trust-boundary design,
 [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) for the delivery schedule and definition of done, and
