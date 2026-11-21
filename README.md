@@ -34,8 +34,8 @@ fourth advanced capability.
 | Signed approval and replay protection | Working with a durable SQLite nonce ledger |
 | Typed remediation on immutable working copies | Working with final-state post-fix checks and manual escalation outside the safe DSL |
 | Evaluation system | All 20 fixtures are populated; live and adversarial operating-system runners emit auditable traces and reports |
-| Container and CI | Configured; local Docker rehearsal and the first remote CI confirmation remain |
-| Submission report, slides, process log, and video | Planned after the evaluation run is frozen |
+| Container and CI | Remote CI passed backend, frontend, and container jobs; local Docker rehearsal remains |
+| Submission artifacts | Process log, 13-slide deck, and seven-minute demo script are drafted; the live-result report and recorded video remain |
 
 The default `LLM_PROVIDER=fake` is deliberate. It gives development and CI a reproducible scenario
 that visibly performs an insufficient retrieval, refines the query, disproves a null hypothesis,
