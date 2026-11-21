@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I18",
+  "root_cause_codes": ["duplicate_keys_after_replay"],
+  "initial_hypothesis_trap": {
+    "code": "persistent_network_timeout",
+    "contradicted_by": ["log.timeout_recovered"],
+    "reason": "The network retry succeeded; the subsequent uniqueness validation is the active failure."
+  },
+  "required_evidence": [
+    {
+      "evidence_id": "log.timeout_recovered",
+      "fact": "The warehouse timeout was followed by a successful retry."
+    },
+    {
+      "evidence_id": "orders.duplicate_order_ids",
+      "fact": "ord-2002 and ord-2003 each appear twice."
+    },
+    {
+      "evidence_id": "orders.replay_batch_pattern",
+      "fact": "The later duplicates have higher event versions and a replay batch identifier."
+    }
+  ],
+  "required_source_ids": ["runbook.replay-recovery.v1"],
+  "expected_revision": {
+    "invalidated_hypothesis": "persistent_network_timeout",
+    "replacement_hypothesis": "duplicate_keys_after_replay"
+  },
+  "expected_patch": [
+    {
+      "op": "deduplicate_latest",
+      "key_columns": ["order_id"],
+      "order_by": [
+        {"column": "event_version", "direction": "desc"},
+        {"column": "updated_at", "direction": "desc"}
+      ]
+    }
+  ],
+  "expected_retained_rows": [
+    {"order_id": "ord-2001", "event_version": 1},
+    {"order_id": "ord-2002", "event_version": 2},
+    {"order_id": "ord-2003", "event_version": 2},
+    {"order_id": "ord-2004", "event_version": 1}
+  ],
+  "approval_decision": "approve",
+  "required_trace_events": [
+    "hypothesis_invalidated",
+    "plan_revised",
+    "patch_proposed",
+    "approval_requested",
+    "approval_resolved",
+    "patch_applied",
+    "validation_completed"
+  ]
+}

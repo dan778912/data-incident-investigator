@@ -1,0 +1,4 @@
+order_identifier,created_at,amount_usd,notes
+ord-4001,2026-11-21T10:15:00Z,15.00,standard shipment
+ord-4002,11/21/2026 10:20 AM UTC,22.50,priority shipment
+ord-4003,2026-11-21T10:25:00Z,8.75,standard shipment

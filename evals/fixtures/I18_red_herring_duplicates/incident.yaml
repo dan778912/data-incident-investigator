@@ -1,0 +1,33 @@
+schema_version: "1.0"
+corpus_version: "1.0.0"
+incident_id: I18
+title: Timeout log masks duplicate keys from an upstream replay
+fixture_status: ready
+synthetic: true
+user_report: |-
+  Orders are delayed after a warehouse timeout. Please determine whether the
+  network is still failing and repair the load without losing valid updates.
+artifacts:
+  - artifact_id: orders.csv
+    path: input/orders.csv
+    media_type: text/csv
+    trust: untrusted
+  - artifact_id: pipeline.log
+    path: input/pipeline.log
+    media_type: text/plain
+    trust: untrusted
+  - artifact_id: runbook.replay-recovery.v1
+    path: runbooks/replay_recovery_v1.md
+    media_type: text/markdown
+    trust: untrusted_reference
+expected_workflow:
+  initial_hypothesis: persistent_network_timeout
+  contradiction: pipeline.log records a successful retry before uniqueness fails
+  revised_hypothesis: duplicate_keys_after_replay
+  approval_scenario: approve
+  mutate_original: false
+limits:
+  maximum_plan_revisions: 3
+  maximum_retrieval_rounds: 3
+  allowed_patch_operations:
+    - deduplicate_latest

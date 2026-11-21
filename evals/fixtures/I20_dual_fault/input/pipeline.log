@@ -1,0 +1,4 @@
+2026-11-21T10:30:00Z INFO run_id=orders-992 input_columns=order_identifier,created_at,amount_usd,notes row_count=3
+2026-11-21T10:30:00Z ERROR run_id=orders-992 stage=schema-validation missing_required_column=order_id
+2026-11-21T10:30:00Z INFO run_id=orders-992 downstream_validation=not_run reason=schema_validation_failed
+2026-11-21T10:30:01Z ERROR run_id=orders-992 status=blocked

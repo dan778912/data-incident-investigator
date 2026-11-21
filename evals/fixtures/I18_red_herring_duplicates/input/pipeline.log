@@ -1,0 +1,5 @@
+2026-11-21T08:09:58Z ERROR run_id=orders-881 stage=warehouse-write error=timeout attempt=1
+2026-11-21T08:10:03Z INFO run_id=orders-881 stage=warehouse-write retry=1 status=success
+2026-11-21T08:12:30Z INFO run_id=orders-881 source_rows=6 batch_ids=batch-042,batch-043-replay
+2026-11-21T08:12:31Z ERROR run_id=orders-881 validation=unique_key column=order_id duplicate_values=ord-2002,ord-2003
+2026-11-21T08:12:31Z ERROR run_id=orders-881 status=blocked reason=uniqueness_validation

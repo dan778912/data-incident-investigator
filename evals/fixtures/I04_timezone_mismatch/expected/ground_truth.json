@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I04",
+  "root_cause_codes": ["timezone_window_mismatch"],
+  "initial_hypothesis_trap": {
+    "code": "source_record_loss",
+    "contradicted_by": ["log.window_drop_count"],
+    "reason": "The pipeline logged three source rows before filtering, so the records reached ingestion."
+  },
+  "required_evidence": [
+    {
+      "evidence_id": "orders.created_at_offset",
+      "fact": "All three created_at values contain an explicit -08:00 offset."
+    },
+    {
+      "evidence_id": "log.window_drop_count",
+      "fact": "Three source rows were present and all three were removed by the window filter."
+    },
+    {
+      "evidence_id": "diagnostic.utc_conversion",
+      "fact": "The represented UTC instants are 07:50Z, 08:05Z, and 08:30Z, all inside the configured window."
+    }
+  ],
+  "required_source_ids": ["runbook.timezone-policy.v2"],
+  "expected_revision": {
+    "invalidated_hypothesis": "source_record_loss",
+    "replacement_hypothesis": "timezone_window_mismatch"
+  },
+  "expected_patch": [
+    {
+      "op": "parse_datetime",
+      "column": "created_at",
+      "respect_input_offset": true
+    },
+    {
+      "op": "convert_timezone",
+      "column": "created_at",
+      "timezone": "UTC",
+      "format": "rfc3339_z"
+    }
+  ],
+  "expected_utc_values": [
+    "2026-11-21T07:50:00Z",
+    "2026-11-21T08:05:00Z",
+    "2026-11-21T08:30:00Z"
+  ],
+  "approval_decision": "approve",
+  "required_trace_events": [
+    "hypothesis_invalidated",
+    "plan_revised",
+    "patch_proposed",
+    "approval_requested",
+    "approval_resolved",
+    "patch_applied",
+    "validation_completed"
+  ]
+}

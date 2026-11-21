@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I19",
+  "root_cause_codes": ["stale_runbook_schema_reference"],
+  "initial_hypothesis_trap": {
+    "code": "source_omitted_client_id",
+    "contradicted_by": ["schema.customer_id_present", "runbook.v1_superseded", "runbook.v2_effective"],
+    "reason": "The source follows the effective v2 contract; the consumer mapping still follows superseded v1."
+  },
+  "required_evidence": [
+    {
+      "evidence_id": "log.missing_client_id",
+      "fact": "The configured mapping requests client_id and fails before processing rows."
+    },
+    {
+      "evidence_id": "schema.customer_id_present",
+      "fact": "The schema and all three records provide customer_id."
+    },
+    {
+      "evidence_id": "runbook.v1_superseded",
+      "fact": "Version 1 is explicitly superseded as of 2026-09-15."
+    },
+    {
+      "evidence_id": "runbook.v2_effective",
+      "fact": "Version 2 is current and requires customer_id."
+    }
+  ],
+  "required_source_ids": [
+    "runbook.customer-schema.v1",
+    "runbook.customer-schema.v2"
+  ],
+  "retrieval_expectation": {
+    "minimum_rounds": 2,
+    "first_round_likely_source": "runbook.customer-schema.v1",
+    "follow_up_query_intent": "retrieve the effective source referenced by superseded_by"
+  },
+  "expected_revision": {
+    "invalidated_hypothesis": "source_omitted_client_id",
+    "replacement_hypothesis": "stale_runbook_schema_reference"
+  },
+  "expected_patch": [
+    {
+      "op": "update_mapping",
+      "mapping_path": "/customer_key",
+      "from": "client_id",
+      "to": "customer_id"
+    }
+  ],
+  "approval_decision": "approve",
+  "required_trace_events": [
+    "retrieval_query",
+    "retrieval_completed",
+    "hypothesis_invalidated",
+    "plan_revised",
+    "patch_proposed",
+    "approval_requested",
+    "approval_resolved",
+    "patch_applied",
+    "validation_completed"
+  ]
+}

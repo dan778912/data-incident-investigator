@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Customer export row",
+  "type": "object",
+  "required": ["customer_id", "email", "status"],
+  "properties": {
+    "customer_id": {
+      "type": "string",
+      "pattern": "^cus-[0-9]{4}$",
+      "description": "Stable customer identifier in exports produced on or after 2026-09-15."
+    },
+    "email": {"type": "string", "format": "email"},
+    "status": {"type": "string", "enum": ["active", "inactive"]}
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,41 @@
+name: data-incident-investigator
+
+services:
+  app:
+    build:
+      context: .
+      args:
+        VITE_API_MODE: live
+    image: data-incident-investigator:local
+    init: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${DII_PORT:-8000}:8000"
+    environment:
+      APP_ENV: production
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8000
+      DATA_DIR: /app/data
+      FRONTEND_DIR: /app/web/dist
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LLM_PROVIDER: ${LLM_PROVIDER:-fake}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-6.2-astra}
+      APPROVAL_HMAC_KEY: ${APPROVAL_HMAC_KEY:-}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-10485760}
+      MAX_DATASET_ROWS: ${MAX_DATASET_ROWS:-100000}
+      MAX_RETRIEVAL_ROUNDS: ${MAX_RETRIEVAL_ROUNDS:-3}
+      MAX_PLAN_REVISIONS: ${MAX_PLAN_REVISIONS:-3}
+      MAX_PATCH_OPERATIONS: ${MAX_PATCH_OPERATIONS:-5}
+      LANGGRAPH_STRICT_MSGPACK: "true"
+    volumes:
+      - app-data:/app/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+
+volumes:
+  app-data:

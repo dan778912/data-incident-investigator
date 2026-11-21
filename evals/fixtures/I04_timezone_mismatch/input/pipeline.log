@@ -1,0 +1,5 @@
+2026-11-21T09:02:00Z INFO run_id=load-204 source=west-orders window_start=2026-11-21T07:30:00Z window_end=2026-11-21T09:00:00Z
+2026-11-21T09:02:01Z INFO run_id=load-204 source_rows=3 timestamp_column=created_at
+2026-11-21T09:02:01Z WARN run_id=load-204 parser_mode=strip-offset-assume-utc
+2026-11-21T09:02:01Z WARN run_id=load-204 rows_before_window=3 rows_after_window=0
+2026-11-21T09:02:02Z ERROR run_id=load-204 validation=row_count minimum=1 actual=0

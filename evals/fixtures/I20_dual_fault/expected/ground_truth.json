@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I20",
+  "root_cause_codes": [
+    "schema_column_renamed",
+    "mixed_datetime_formats"
+  ],
+  "initial_hypothesis_trap": {
+    "code": "single_schema_fault",
+    "contradicted_by": ["validation.first_patch_failed"],
+    "reason": "Renaming the identifier passes schema validation but exposes a timestamp parse failure in row two."
+  },
+  "required_evidence": [
+    {
+      "evidence_id": "log.missing_order_id",
+      "fact": "The first blocking validation reports missing order_id."
+    },
+    {
+      "evidence_id": "schema.order_identifier_present",
+      "fact": "The input supplies order_identifier with one value in every row."
+    },
+    {
+      "evidence_id": "orders.timestamp_parse_failures",
+      "fact": "The second row uses a non-RFC-3339 timestamp while rows one and three use RFC 3339."
+    },
+    {
+      "evidence_id": "validation.first_patch_failed",
+      "fact": "A disposable preview containing only the rename still fails strict timestamp validation."
+    }
+  ],
+  "required_source_ids": ["runbook.order-contract.v3"],
+  "expected_revision": {
+    "invalidated_hypothesis": "single_schema_fault",
+    "replacement_hypothesis": "schema_and_timestamp_faults",
+    "required_revision_reason": "downstream validation did not match the expected all-green result"
+  },
+  "expected_patch": [
+    {
+      "op": "rename_column",
+      "from": "order_identifier",
+      "to": "order_id"
+    },
+    {
+      "op": "parse_datetime",
+      "column": "created_at",
+      "accepted_formats": ["rfc3339", "MM/DD/YYYY hh:mm AM UTC"],
+      "output_format": "rfc3339_z"
+    }
+  ],
+  "expected_timestamps": [
+    "2026-11-21T10:15:00Z",
+    "2026-11-21T10:20:00Z",
+    "2026-11-21T10:25:00Z"
+  ],
+  "approval_decision": "approve",
+  "required_trace_events": [
+    "tool_completed",
+    "validation_completed",
+    "hypothesis_invalidated",
+    "plan_revised",
+    "patch_proposed",
+    "approval_requested",
+    "approval_resolved",
+    "patch_applied",
+    "validation_completed"
+  ]
+}

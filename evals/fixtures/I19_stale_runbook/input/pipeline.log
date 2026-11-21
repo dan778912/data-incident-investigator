@@ -1,0 +1,4 @@
+2026-11-21T11:00:00Z INFO run_id=customers-552 input_columns=customer_id,email,status row_count=3
+2026-11-21T11:00:00Z INFO run_id=customers-552 configured_customer_key=client_id
+2026-11-21T11:00:01Z ERROR run_id=customers-552 stage=map error=missing_required_source_column column=client_id
+2026-11-21T11:00:01Z ERROR run_id=customers-552 status=blocked reason=mapping_validation

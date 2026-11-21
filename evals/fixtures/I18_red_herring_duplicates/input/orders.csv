@@ -1,0 +1,7 @@
+order_id,event_version,updated_at,amount_usd,batch_id
+ord-2001,1,2026-11-21T08:00:00Z,25.00,batch-042
+ord-2002,1,2026-11-21T08:01:00Z,30.00,batch-042
+ord-2003,1,2026-11-21T08:02:00Z,18.00,batch-042
+ord-2004,1,2026-11-21T08:03:00Z,52.00,batch-042
+ord-2002,2,2026-11-21T08:11:00Z,30.00,batch-043-replay
+ord-2003,2,2026-11-21T08:12:00Z,18.00,batch-043-replay

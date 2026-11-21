@@ -1,0 +1,4 @@
+order_id,created_at,amount_usd,region,notes
+ord-1001,2026-11-20T23:50:00-08:00,12.50,west,standard order
+ord-1002,2026-11-21T00:05:00-08:00,45.00,west,priority order
+ord-1003,2026-11-21T00:30:00-08:00,9.99,west,standard order

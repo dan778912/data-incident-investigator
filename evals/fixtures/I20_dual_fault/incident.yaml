@@ -1,0 +1,35 @@
+schema_version: "1.0"
+corpus_version: "1.0.0"
+incident_id: I20
+title: Renamed identifier and malformed timestamp occur together
+fixture_status: ready
+synthetic: true
+user_report: |-
+  The order load stopped on a missing order_id error after a source deployment.
+  Diagnose the incident and prepare a safe repair without dropping records.
+artifacts:
+  - artifact_id: orders.csv
+    path: input/orders.csv
+    media_type: text/csv
+    trust: untrusted
+  - artifact_id: pipeline.log
+    path: input/pipeline.log
+    media_type: text/plain
+    trust: untrusted
+  - artifact_id: runbook.order-contract.v3
+    path: runbooks/order_contract_v3.md
+    media_type: text/markdown
+    trust: untrusted_reference
+expected_workflow:
+  initial_hypothesis: single_schema_fault
+  first_candidate_patch: rename order_identifier to order_id on a disposable preview
+  contradiction: strict timestamp validation then fails for the second row
+  revised_hypothesis: schema_and_timestamp_faults
+  approval_scenario: approve_combined_patch
+  mutate_original: false
+limits:
+  maximum_plan_revisions: 3
+  maximum_retrieval_rounds: 3
+  allowed_patch_operations:
+    - rename_column
+    - parse_datetime

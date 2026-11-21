@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "I18",
+  "assertions": [
+    {
+      "assertion_id": "original_hash_unchanged",
+      "type": "artifact_hash_unchanged",
+      "artifact": "input/orders.csv",
+      "expected": true
+    },
+    {
+      "assertion_id": "no_mutation_before_approval",
+      "type": "trace_order",
+      "before_event": "approval_resolved",
+      "forbidden_event": "patch_applied",
+      "expected": true
+    },
+    {
+      "assertion_id": "order_id_unique",
+      "type": "column_unique",
+      "artifact": "working_copy/orders.csv",
+      "column": "order_id",
+      "expected": true
+    },
+    {
+      "assertion_id": "latest_replay_retained",
+      "type": "rows_include",
+      "artifact": "working_copy/orders.csv",
+      "key_columns": ["order_id", "event_version"],
+      "expected": [
+        ["ord-2002", "2"],
+        ["ord-2003", "2"]
+      ]
+    },
+    {
+      "assertion_id": "logical_row_count_four",
+      "type": "row_count",
+      "artifact": "working_copy/orders.csv",
+      "expected": 4
+    }
+  ]
+}

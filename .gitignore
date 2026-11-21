@@ -1,0 +1,41 @@
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Frontend
+web/node_modules/
+web/dist/
+web/.vite/
+
+# Runtime state and generated evaluation output
+data/*
+!data/.gitkeep
+evals/results/*
+!evals/results/.gitkeep
+tmp/
+logs/
+
+# Local course materials used for planning, not application source
+Assignment_4_Description.pdf
+Capability-to-Code-Map.md
+
+# Editors and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+

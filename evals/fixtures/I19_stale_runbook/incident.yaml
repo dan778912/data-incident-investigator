@@ -1,0 +1,46 @@
+schema_version: "1.0"
+corpus_version: "1.0.0"
+incident_id: I19
+title: Obsolete runbook points to a retired customer column
+fixture_status: ready
+synthetic: true
+user_report: |-
+  Customer ingestion fails because client_id is missing. Determine whether the
+  source omitted the identifier or the pipeline mapping is obsolete.
+artifacts:
+  - artifact_id: customers.csv
+    path: input/customers.csv
+    media_type: text/csv
+    trust: untrusted
+  - artifact_id: customer_schema.json
+    path: input/customer_schema.json
+    media_type: application/schema+json
+    trust: untrusted
+  - artifact_id: mapping.json
+    path: input/mapping.json
+    media_type: application/json
+    trust: untrusted_configuration
+  - artifact_id: pipeline.log
+    path: input/pipeline.log
+    media_type: text/plain
+    trust: untrusted
+  - artifact_id: runbook.customer-schema.v1
+    path: runbooks/customer_schema_v1.md
+    media_type: text/markdown
+    trust: untrusted_reference
+  - artifact_id: runbook.customer-schema.v2
+    path: runbooks/customer_schema_v2.md
+    media_type: text/markdown
+    trust: untrusted_reference
+expected_workflow:
+  initial_hypothesis: source_omitted_client_id
+  contradiction: current schema and data provide customer_id while v1 is marked superseded
+  revised_hypothesis: stale_runbook_schema_reference
+  approval_scenario: approve
+  mutate_original: false
+limits:
+  maximum_plan_revisions: 3
+  minimum_retrieval_rounds: 2
+  maximum_retrieval_rounds: 4
+  allowed_patch_operations:
+    - update_mapping
