@@ -82,7 +82,7 @@ as a successful repair.
 |---|---:|---|
 | Required revision triggered | 0/4 | The four designated revision traps did not produce the required revision event. |
 | Required revision succeeded | 0/4 | The definitive run does not demonstrate live self-correction on those cases. |
-| False revision rate | 2/16 | Two valid revision events occurred outside the four designated cases. |
+| False revision rate | 2/16 | Two ordinary runs emitted revision events outside the four designated cases; two of the three events were valid. |
 | Valid revisions per run | 2/20 | Revision machinery ran, but not where the frozen rubric required it. |
 | Required iterative-retrieval completion | 0/2 | Neither designated case completed the rubric's required refinement path. |
 | Second-round evidence gain | 0/4 required facts across 2 cases | The definitive run provides no measured second-round gain. |
