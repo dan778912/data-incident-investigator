@@ -57,6 +57,8 @@ _UNIX_HOME_PATH = re.compile(r"/(?:home|Users)/[^/\s\"']+", re.IGNORECASE)
 _RELATIVE_WINDOWS_PATH = re.compile(
     r"(?<![A-Za-z0-9])(?:live|adversarial|\.)\\[^\s`\"']+(?:\\[^\s`\"']+)*"
 )
+_FROZEN_LIVE_SUMMARY = Path("live/summary.json")
+_FROZEN_ADVERSARIAL_RESULTS_LINK = "../adversarial/adversarial_results.json"
 
 
 def freeze_evaluation(
@@ -234,6 +236,7 @@ def _sanitize_evidence(
     if evidence.format == "json":
         raw: object = json.loads(text)
         cleaned = _sanitize_json_value(raw, replacements)
+        cleaned = _canonicalize_json_links(cleaned, evidence.destination)
         return (
             json.dumps(cleaned, indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False)
             + "\n"
@@ -282,6 +285,15 @@ def _sanitize_json_value(
     if value is None or isinstance(value, bool | int | float):
         return value
     raise EvidenceFreezeError(f"unsupported JSON evidence value: {type(value).__name__}")
+
+
+def _canonicalize_json_links(value: object, destination: Path) -> object:
+    if destination != _FROZEN_LIVE_SUMMARY or not isinstance(value, dict):
+        return value
+    summary = cast(dict[str, object], value)
+    if "adversarial_results_path" in summary:
+        summary["adversarial_results_path"] = _FROZEN_ADVERSARIAL_RESULTS_LINK
+    return summary
 
 
 def _sanitize_text(

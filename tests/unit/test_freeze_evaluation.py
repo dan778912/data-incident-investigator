@@ -26,7 +26,7 @@ def _write_runs(tmp_path: Path) -> tuple[Path, Path]:
             {
                 "run_count": 1,
                 "report_path": str(live / "report.md"),
-                "adversarial_results_path": str(adversarial / "adversarial_results.json"),
+                "adversarial_results_path": (f"../{adversarial.name}/adversarial_results.json"),
             }
         ),
         encoding="utf-8",
@@ -99,7 +99,13 @@ def test_freeze_writes_sanitized_hashed_evidence(tmp_path: Path) -> None:
         (output / "adversarial/adversarial_results.json").read_text(encoding="utf-8")
     )
     assert summary["report_path"] == "live/report.md"
-    assert summary["adversarial_results_path"] == "adversarial/adversarial_results.json"
+    assert summary["adversarial_results_path"] == "../adversarial/adversarial_results.json"
+    frozen_adversarial_results = output / "live" / summary["adversarial_results_path"]
+    assert (
+        frozen_adversarial_results.resolve()
+        == (output / "adversarial/adversarial_results.json").resolve()
+    )
+    assert frozen_adversarial_results.is_file()
     assert attack["results"][0]["complete_trace_path"] == "adversarial/traces/ATK-LOG-001.json"
 
     manifest = json.loads((output / "MANIFEST.json").read_text(encoding="utf-8"))

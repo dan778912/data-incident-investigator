@@ -29,7 +29,13 @@ from data_incident_investigator.domain.remediation import RemediationOperation
 
 from .harness.manifest import load_manifest
 from .harness.models import ManifestCase
-from .live_runner import FixtureArtifact, FixtureDefinition, LiveEvaluationRunner, load_fixture
+from .live_runner import (
+    FixtureArtifact,
+    FixtureDefinition,
+    LiveEvaluationRunner,
+    _evaluation_client,
+    load_fixture,
+)
 
 type InsertionMode = Literal[
     "append_line",
@@ -478,7 +484,7 @@ class _LiveFixtureSession:
             self._settings,
             evaluation_results_dir=self._output_dir.parent,
         )
-        self._client_context = TestClient(self._app, raise_server_exceptions=False)
+        self._client_context = _evaluation_client(self._app)
         self._client = self._client_context.__enter__()
         return self
 

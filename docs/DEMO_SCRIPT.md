@@ -8,6 +8,9 @@
 - Open the application, the frozen evaluation report, and the repository's
   architecture diagram before recording.
 - Confirm the original I04 dataset hash and the release commit on screen.
+- Confirm the final four-attack rerun completed without provider errors. Until
+  that credit-restored run is reviewed and frozen, do not record the
+  adversarial trace as final release evidence.
 
 ## 0:00–0:40 — Problem and boundary
 
@@ -53,19 +56,29 @@ outside the DSL end in recorded manual escalation without mutation.
 
 ## 5:10–6:10 — Guardrails and adversarial evidence
 
-Open the evaluation view and one prompt-injection trace. Show the exact attack
-text, insertion location, prohibited-capability checks, canary result, and
-unchanged original hash. State that the attack was executed against a staged
-fixture copy; it is not a hypothetical policy claim.
+After the credit-restored final rerun is reviewed, open the evaluation view and
+one prompt-injection trace. Show the exact attack text, insertion location,
+prohibited-capability checks, canary result, and unchanged original hash. State
+that the attack was executed against a staged fixture copy. If that rerun is
+still pending, replace this segment with an explicit placeholder: the attempted
+final run stopped on OpenAI HTTP 429 with no credits, so it proves neither
+containment nor attack success. Do not present the earlier 4/4 pre-fix baseline
+as final release evidence.
 
 ## 6:10–7:00 — Evaluation, deployment, and close
 
-Summarize the frozen 20-case metrics, revision cases, adversarial outcomes,
-latency, tokens, and estimated cost. Finish on the architecture: React and
-FastAPI in one local container, LangGraph with SQLite checkpoints, case-scoped
-FTS retrieval, and a typed mutation boundary. Name the main limitation: the
-system supports a deliberately narrow CSV/JSON incident class and escalates
-anything it cannot repair safely.
+State the reviewed numbers precisely: 19/20 strict end-to-end passes, 20/20
+exact root causes, 60/63 required evidence items, 22/22 required sources, 12/12
+successful repairs with 75/75 post-repair checks, and 20/20 original hashes
+preserved. Median latency was 29.011 seconds, median usage was 11,590 tokens,
+and the 20-case run cost $2.9146708 total ($0.14573354 per attempted case).
+Report final adversarial outcomes only after the credit-restored rerun; until
+then, say “pending” on screen. Finish on the architecture: React and FastAPI in
+one local container, LangGraph with SQLite checkpoints, case-scoped FTS
+retrieval, and a typed mutation boundary. Name the concrete limitation: I18
+escalated safely because the evidence did not prove that input order matched
+greatest `event_version`; the live run also did not elicit the rubric's
+required self-correction or iterative-retrieval paths.
 
 ## Recording contingencies
 

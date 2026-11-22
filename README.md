@@ -31,12 +31,12 @@ fourth advanced capability.
 |---|---|
 | Deterministic end-to-end workflow | Working and covered by integration tests |
 | React investigation/approval dashboard | Working in mock mode and connected to the live API |
-| OpenAI structured-reasoning adapter | Implemented with structured outputs, low reasoning effort, and token/cost accounting; the I01 live smoke passed and the 20-case release run is next |
+| OpenAI structured-reasoning adapter | Definitive 20-case live run completed on `gpt-6.2-astra`: 19/20 strict end-to-end passes and 20/20 exact root causes, with reviewed token/cost accounting |
 | Signed approval and replay protection | Working with a durable SQLite nonce ledger |
 | Typed remediation on immutable working copies | Working with final-state post-fix checks and manual escalation outside the safe DSL |
-| Evaluation system | All 20 fixtures are populated; live and adversarial operating-system runners emit auditable traces and reports |
+| Evaluation system | The reviewed live suite is complete; the final four-attack adversarial rerun remains pending after the provider failed closed with HTTP 429 because the account had no credits |
 | Container and CI | Remote CI passed backend, frontend, and container jobs; local Docker rehearsal remains |
-| Submission artifacts | Process log, 13-slide deck, and seven-minute demo script are drafted; the live-result report and recorded video remain |
+| Submission artifacts | Process log, live evaluation report, 13-slide deck, and seven-minute demo script are drafted; the credit-restored adversarial freeze and recorded video remain |
 
 The default `LLM_PROVIDER=fake` is deliberate. It gives development and CI a reproducible scenario
 that visibly performs an insufficient retrieval, refines the query, disproves a null hypothesis,
@@ -230,5 +230,5 @@ The [detailed capability-to-code map](docs/CAPABILITY_MAP.md) is the supplementa
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the component and trust-boundary design,
 [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) for the delivery schedule and definition of done, and
-[docs/EVALUATION_REPORT.md](docs/EVALUATION_REPORT.md) for the evaluation protocol and pending live
-results.
+[docs/EVALUATION_REPORT.md](docs/EVALUATION_REPORT.md) for the reviewed live results, explicit
+limitations, and the remaining credit-restored adversarial rerun.
