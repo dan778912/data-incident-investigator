@@ -111,6 +111,8 @@ export interface AttackResult {
 export interface EvaluationSummary {
   runDate: string;
   sampleSize: number;
+  provider?: string;
+  model?: string;
   metrics: EvaluationMetric[];
   attacks: AttackResult[];
   categories: Array<{ label: string; passed: number; total: number }>;

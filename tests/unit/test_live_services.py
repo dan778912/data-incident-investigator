@@ -34,8 +34,12 @@ from data_incident_investigator.security.paths import CasePathResolver
 from data_incident_investigator.security.policy import PolicyGateway
 from data_incident_investigator.services.live import (
     ArtifactCatalog,
+    AutomaticRemediationDraft,
+    CheckNullRatioDiagnostic,
+    CheckNullRatioDraftArgs,
     CheckTypeConformanceDiagnostic,
     CheckTypeConformanceDraftArgs,
+    ConfirmedVerificationDraft,
     EvidenceAssessmentDraft,
     ExpectedTypeDraft,
     HypothesesDraft,
@@ -44,11 +48,14 @@ from data_incident_investigator.services.live import (
     LiveReasoningService,
     LiveRemediationService,
     LiveRetrievalService,
+    ManualRemediationDraft,
     QueryDraft,
+    RejectingParseDatetimeDraft,
     RemediationDraft,
     ReplacementDraft,
     ReplaceValuesDraft,
     VerificationDraft,
+    VerifiedCauseDraft,
 )
 from data_incident_investigator.workflow.security import canonical_sha256
 from data_incident_investigator.workflow.state import ApprovalRecord, HypothesisRecord
@@ -349,6 +356,14 @@ def test_live_retrieval_preserves_selected_artifact_provenance(tmp_path: Path) -
         filename="events.csv",
         content="id,event_time\n1,2026-11-21T10:00:00Z\n",
     )
+    log = _artifact(
+        repository=repository,
+        resolver=resolver,
+        case_id=case.case_id,
+        kind=ArtifactKind.LOG,
+        filename="pipeline.log",
+        content="ERROR output_count expected=3 actual=1 api_key=supersecretvalue\n",
+    )
     retrieval_repository = FtsRunbookRepository.open(tmp_path / "retrieval.sqlite3")
     service = LiveRetrievalService(
         ArtifactCatalog(database_path, data_root),
@@ -357,7 +372,11 @@ def test_live_retrieval_preserves_selected_artifact_provenance(tmp_path: Path) -
     try:
         records = service.search(
             query="watermark UTC timestamps",
-            artifact_ids=[str(runbook.artifact_id), str(dataset.artifact_id)],
+            artifact_ids=[
+                str(runbook.artifact_id),
+                str(dataset.artifact_id),
+                str(log.artifact_id),
+            ],
         )
     finally:
         retrieval_repository.close()
@@ -377,6 +396,12 @@ def test_live_retrieval_preserves_selected_artifact_provenance(tmp_path: Path) -
     assert "kind=runbook" in runbook_metadata["excerpt"]
     assert dataset.sha256 in dataset_metadata["excerpt"]
     assert str(data_root.resolve()) not in json.dumps(records)
+    log_coverage = next(
+        item for item in records if item["evidence_id"] == f"{log.artifact_id}:chunk:coverage"
+    )
+    assert "output_count" in log_coverage["excerpt"]
+    assert "supersecretvalue" not in log_coverage["excerpt"]
+    assert "[REDACTED:assigned_secret]" in log_coverage["excerpt"]
 
 
 def test_live_retrieval_rejects_tampered_artifact_content(tmp_path: Path) -> None:
@@ -412,8 +437,9 @@ def test_live_retrieval_rejects_tampered_artifact_content(tmp_path: Path) -> Non
         retrieval_repository.close()
 
 
-def test_live_reasoning_converts_typed_diagnostic_and_rejects_unknown_root_cause() -> None:
+def test_live_reasoning_converts_diagnostic_and_corrects_proposed_cause_code() -> None:
     artifact_id = uuid4()
+    artifact_evidence_id = f"artifact:{artifact_id}"
     provider = ScriptedProvider(
         HypothesesDraft(
             hypotheses=[
@@ -421,10 +447,10 @@ def test_live_reasoning_converts_typed_diagnostic_and_rejects_unknown_root_cause
                     hypothesis_id="type-drift",
                     statement="customer_id changed from integer to string.",
                     cause_code=RootCauseCode.SCHEMA_COLUMN_RENAMED,
-                    evidence_ids=["artifact-metadata"],
+                    evidence_refs=["E0"],
                     diagnostic=CheckTypeConformanceDiagnostic(
                         tool=DiagnosticTool.CHECK_TYPE_CONFORMANCE,
-                        artifact_id=artifact_id,
+                        dataset_ref="D0",
                         arguments=CheckTypeConformanceDraftArgs(
                             expectations=[
                                 ExpectedTypeDraft(
@@ -439,9 +465,16 @@ def test_live_reasoning_converts_typed_diagnostic_and_rejects_unknown_root_cause
             ]
         ),
         VerificationDraft(
-            confirmed=True,
-            root_cause_ids=["not-a-listed-hypothesis"],
-            reason="The model selected an unknown identifier.",
+            verdict=ConfirmedVerificationDraft(
+                confirmed=True,
+                findings=[
+                    VerifiedCauseDraft(
+                        hypothesis_ref="H0",
+                        cause_code=RootCauseCode.MIXED_DATETIME_FORMATS,
+                    )
+                ],
+                reason="The diagnostic establishes a corrected final taxonomy label.",
+            )
         ),
     )
     service = LiveReasoningService(provider)
@@ -454,11 +487,22 @@ def test_live_reasoning_converts_typed_diagnostic_and_rejects_unknown_root_cause
         incident_summary="Rows disappeared after a schema deployment.",
         evidence=[
             {
-                "evidence_id": "artifact-metadata",
+                "evidence_id": artifact_evidence_id,
+                "artifact_kind": "dataset",
                 "source": "dataset",
-                "excerpt": "Validated dataset metadata.",
+                "excerpt": "Older duplicate metadata.",
+                "relevance_score": 0.2,
+            },
+            {
+                "evidence_id": artifact_evidence_id,
+                "artifact_kind": "dataset",
+                "source": "dataset",
+                "excerpt": (
+                    "missing_required_column=customer_id; input_columns=customerId; "
+                    "the current contract permits rename_column"
+                ),
                 "relevance_score": 1.0,
-            }
+            },
         ],
     )
     action = json.loads(hypotheses[0]["diagnostic_action"])
@@ -469,6 +513,22 @@ def test_live_reasoning_converts_typed_diagnostic_and_rejects_unknown_root_cause
         "tool": "check_type_conformance",
     }
     assert provider.calls[0]["schema"] is HypothesesDraft
+    hypothesis_payload = json.loads(provider.calls[0]["user_input"])
+    assert hypothesis_payload["untrusted_evidence"] == [
+        {
+            "artifact_ref": "A0",
+            "artifact_kind": "dataset",
+            "dataset_ref": "D0",
+            "evidence_ref": "E0",
+            "excerpt": (
+                "missing_required_column=customer_id; input_columns=customerId; "
+                "the current contract permits rename_column"
+            ),
+            "relevance_score": 1.0,
+            "source": "dataset",
+        }
+    ]
+    assert "evidence_id" not in hypothesis_payload["untrusted_evidence"][0]
     hypothesis_instructions = provider.calls[0]["instructions"].lower()
     assert "untrusted" in hypothesis_instructions
     assert "upstream_replay_duplicates" in hypothesis_instructions
@@ -477,22 +537,213 @@ def test_live_reasoning_converts_typed_diagnostic_and_rejects_unknown_root_cause
 
     verification_evidence = [
         {
-            "evidence_id": "artifact-metadata",
+            "evidence_id": artifact_evidence_id,
             "source": "dataset",
-            "excerpt": "Validated dataset metadata.",
+            "excerpt": (
+                "missing_required_column=customer_id; input_columns=customerId; "
+                "the current contract permits rename_column"
+            ),
             "relevance_score": 1.0,
         }
     ]
-    with pytest.raises(ValueError, match="unknown root-cause"):
-        service.verify_hypotheses(
-            hypotheses=hypotheses,
-            evidence=verification_evidence,
-            diagnostics=[],
-            revision=0,
-        )
+    verification = service.verify_hypotheses(
+        hypotheses=hypotheses,
+        evidence=verification_evidence,
+        diagnostics=[],
+        revision=0,
+    )
+    assert verification["root_cause_ids"] == ["type-drift"]
+    assert verification["root_cause_codes"] == ["schema_column_renamed"]
+    assert verification["taxonomy_guard_applied"] is True
     verification_payload = json.loads(provider.calls[1]["user_input"])
     assert verification_payload["untrusted_evidence"] == verification_evidence
+    assert verification_payload["hypotheses"][0]["hypothesis_ref"] == "H0"
+    assert verification_payload["hypotheses"][0]["proposed_cause_code"] == ("schema_column_renamed")
     assert "incidental hidden runtime setting" in provider.calls[1]["instructions"].lower()
+
+
+def test_live_reasoning_normalizes_unambiguous_null_ratio_draft() -> None:
+    artifact_id = uuid4()
+    artifact_evidence_id = f"artifact:{artifact_id}"
+    supporting_evidence_id = f"{uuid4()}:chunk:0"
+    provider = ScriptedProvider(
+        HypothesesDraft(
+            hypotheses=[
+                HypothesisDraft(
+                    hypothesis_id="null-markers",
+                    statement="Literal NA markers are being parsed as null values.",
+                    cause_code=RootCauseCode.NULL_MARKER_NORMALIZATION,
+                    evidence_refs=["E0"],
+                    diagnostic=CheckNullRatioDiagnostic(
+                        tool=DiagnosticTool.CHECK_NULL_RATIO,
+                        dataset_ref="D0",
+                        arguments=CheckNullRatioDraftArgs(
+                            columns=["status"],
+                            threshold=0.1,
+                            keep_default_na=False,
+                            na_values=[""],
+                        ),
+                    ),
+                    expected_signal="The status null ratio changes under literal parsing.",
+                )
+            ]
+        )
+    )
+
+    hypotheses = LiveReasoningService(provider).form_hypotheses(
+        incident_summary="Status rows disappeared after CSV ingestion.",
+        evidence=[
+            {
+                "evidence_id": supporting_evidence_id,
+                "source": "runbook chunk",
+                "excerpt": "Literal NA markers must be preserved.",
+                "relevance_score": 1.0,
+            },
+            {
+                "evidence_id": artifact_evidence_id,
+                "artifact_kind": "dataset",
+                "source": "dataset",
+                "excerpt": "Validated dataset metadata.",
+                "relevance_score": 1.0,
+            },
+        ],
+    )
+
+    action = json.loads(hypotheses[0]["diagnostic_action"])
+    assert hypotheses[0]["evidence_ids"] == [supporting_evidence_id, artifact_evidence_id]
+    assert action == {
+        "artifact_id": str(artifact_id),
+        "arguments": {
+            "columns": ["status"],
+            "keep_default_na": False,
+            "na_values": [""],
+            "threshold": 0.1,
+        },
+        "tool": "check_null_ratio",
+    }
+    schema = to_strict_json_schema(HypothesesDraft)
+    null_args = schema["$defs"]["CheckNullRatioDraftArgs"]
+    assert "column" not in null_args["properties"]
+    assert null_args["properties"]["columns"]["minItems"] == 1
+    diagnostic = schema["$defs"]["CheckNullRatioDiagnostic"]["properties"]
+    assert "artifact_id" not in diagnostic
+    assert "dataset_ref" in diagnostic
+    assert (
+        "do not use check_null_ratio to prove literal marker semantics"
+        in provider.calls[0]["instructions"].lower()
+    )
+
+
+def test_live_reasoning_bounds_sql_like_queries_and_advances_repeated_refinement() -> None:
+    artifact_id = str(uuid4())
+    provider = ScriptedProvider(
+        QueryDraft(
+            query=(
+                f"SELECT * FROM incidents JOIN artifacts ON id = '{artifact_id}' "
+                "ORDER BY created_at"
+            )
+        ),
+        QueryDraft(query="schema validation current contract logs"),
+    )
+    service = LiveReasoningService(provider)
+
+    initial = service.initial_query(
+        incident_summary="Customer enrichment row count increased after a deployment.",
+        artifact_ids=[artifact_id],
+    )
+    refined = service.refine_query(
+        incident_summary="Customer enrichment row count increased after a deployment.",
+        previous_query="schema validation current contract logs",
+        evidence=[],
+        retrieval_round=1,
+    )
+
+    assert "select" not in initial.casefold()
+    assert "join" not in initial.casefold()
+    assert artifact_id not in initial
+    assert len(initial) <= 400
+    assert refined.casefold() != "schema validation current contract logs"
+    assert len(refined) <= 400
+    initial_payload = json.loads(provider.calls[0]["user_input"])
+    assert initial_payload["artifact_count"] == 1
+    assert "artifact_ids" not in initial_payload
+
+
+def test_live_reasoning_discards_unissued_refs_without_trusting_them() -> None:
+    artifact_id = uuid4()
+    supporting_evidence_id = f"{uuid4()}:chunk:0"
+    provider = ScriptedProvider(
+        HypothesesDraft(
+            hypotheses=[
+                HypothesisDraft(
+                    hypothesis_id="ungrounded",
+                    statement="This hypothesis cites only an invented reference.",
+                    cause_code=RootCauseCode.SCHEMA_COLUMN_RENAMED,
+                    evidence_refs=["E99"],
+                    diagnostic=CheckTypeConformanceDiagnostic(
+                        tool=DiagnosticTool.CHECK_TYPE_CONFORMANCE,
+                        dataset_ref="D0",
+                        arguments=CheckTypeConformanceDraftArgs(
+                            expectations=[
+                                ExpectedTypeDraft(column="customer_id", expected_type="string")
+                            ]
+                        ),
+                    ),
+                    expected_signal="A mismatch is observed.",
+                ),
+                HypothesisDraft(
+                    hypothesis_id="grounded",
+                    statement="The current contract and source column names differ.",
+                    cause_code=RootCauseCode.SCHEMA_COLUMN_RENAMED,
+                    evidence_refs=["E0", "E99"],
+                    diagnostic=CheckTypeConformanceDiagnostic(
+                        tool=DiagnosticTool.CHECK_TYPE_CONFORMANCE,
+                        dataset_ref="D0",
+                        arguments=CheckTypeConformanceDraftArgs(
+                            expectations=[
+                                ExpectedTypeDraft(column="customer_id", expected_type="string")
+                            ]
+                        ),
+                    ),
+                    expected_signal="The canonical column is absent.",
+                ),
+            ]
+        )
+    )
+
+    records = LiveReasoningService(provider).form_hypotheses(
+        incident_summary="The canonical customer identifier is missing.",
+        evidence=[
+            {
+                "evidence_id": supporting_evidence_id,
+                "source": "current contract",
+                "excerpt": "Map customerId to customer_id.",
+                "relevance_score": 1.0,
+            },
+            {
+                "evidence_id": f"artifact:{artifact_id}",
+                "artifact_kind": "dataset",
+                "source": "customers.csv",
+                "excerpt": "Validated dataset metadata.",
+                "relevance_score": 1.0,
+            },
+        ],
+    )
+
+    assert [record["hypothesis_id"] for record in records] == ["grounded"]
+    assert records[0]["evidence_ids"] == [supporting_evidence_id, f"artifact:{artifact_id}"]
+    assert "E99" not in json.dumps(records)
+
+
+@pytest.mark.parametrize("columns", [[], ["*"], ["id", "id"]])
+def test_null_ratio_draft_rejects_ambiguous_columns(columns: list[str]) -> None:
+    with pytest.raises(ValueError):
+        CheckNullRatioDraftArgs(
+            columns=columns,
+            threshold=0.1,
+            keep_default_na=True,
+            na_values=[],
+        )
 
 
 def test_model_facing_schemas_use_openai_supported_strict_subset() -> None:
@@ -523,6 +774,12 @@ def test_model_facing_schemas_use_openai_supported_strict_subset() -> None:
     assert "anyOf" in json.dumps(to_strict_json_schema(HypothesesDraft), sort_keys=True)
     remediation_schema = to_strict_json_schema(RemediationDraft)
     assert "anyOf" in json.dumps(remediation_schema, sort_keys=True)
+    assert (
+        remediation_schema["$defs"]["RejectingParseDatetimeDraft"]["properties"]["on_error"][
+            "const"
+        ]
+        == "reject"
+    )
     assert remediation_schema["$defs"]["CanonicalDatetimeFormat"]["enum"] == [
         "rfc3339",
         "MM/DD/YYYY hh:mm AM UTC",
@@ -686,22 +943,25 @@ def test_live_remediation_creates_and_registers_working_copy(tmp_path: Path) -> 
     evidence_id = f"artifact:{source.artifact_id}"
     provider = ScriptedProvider(
         RemediationDraft(
-            title="Rename the legacy identifier",
-            explanation="The retrieved schema requires the canonical id column.",
-            source_artifact_id=source.artifact_id,
-            operations=[
-                RenameColumn(from_name="legacy_id", to_name="id"),
-                ReplaceValuesDraft(
-                    column="status",
-                    replacements=[ReplacementDraft(from_value="completed", to_value="complete")],
-                ),
-            ],
-            expected_effects=[
-                "The dataset exposes the canonical id column.",
-                "The status vocabulary uses complete.",
-            ],
-            required_post_checks=["profile_dataset", "replace_values"],
-            citation_ids=[evidence_id],
+            proposal=AutomaticRemediationDraft(
+                title="Rename the legacy identifier",
+                explanation="The retrieved schema requires the canonical id column.",
+                source_dataset_ref="D0",
+                operations=[
+                    RenameColumn(from_name="legacy_id", to_name="id"),
+                    ReplaceValuesDraft(
+                        column="status",
+                        replacements=[
+                            ReplacementDraft(from_value="completed", to_value="complete")
+                        ],
+                    ),
+                ],
+                expected_effects=[
+                    "The dataset exposes the canonical id column.",
+                    "The status vocabulary uses complete.",
+                ],
+                required_post_checks=["profile_dataset", "replace_values"],
+            )
         )
     )
     catalog = ArtifactCatalog(database_path, data_root)
@@ -716,6 +976,7 @@ def test_live_remediation_creates_and_registers_working_copy(tmp_path: Path) -> 
     evidence = [
         {
             "evidence_id": evidence_id,
+            "artifact_kind": "dataset",
             "source": "orders.csv metadata",
             "excerpt": f"Validated dataset sha256={source.sha256}",
             "relevance_score": 1.0,
@@ -726,7 +987,12 @@ def test_live_remediation_creates_and_registers_working_copy(tmp_path: Path) -> 
         verification={
             "confirmed": True,
             "root_cause_id": "schema-rename",
+            "root_cause_codes": [
+                "schema_column_renamed",
+                "categorical_vocabulary_drift",
+            ],
             "reason": "The expected and observed schemas differ.",
+            "evidence_ids": [evidence_id],
         },
         evidence=evidence,
         diagnostics=[],
@@ -785,6 +1051,238 @@ def test_live_remediation_creates_and_registers_working_copy(tmp_path: Path) -> 
     assert audit == ("working_copy_created", "agent_after_human_approval")
 
 
+def test_live_remediation_completes_locale_repair_from_bounded_profile(
+    tmp_path: Path,
+) -> None:
+    data_root = tmp_path / "data"
+    database_path = tmp_path / "application.sqlite3"
+    repository = _repository(database_path)
+    case = _case(repository, "Locale remediation case")
+    resolver = CasePathResolver(data_root)
+    source = _artifact(
+        repository=repository,
+        resolver=resolver,
+        case_id=case.case_id,
+        kind=ArtifactKind.DATASET,
+        filename="sales.csv",
+        content='sale_id,amount_eur\ns-1,"1.234,56"\ns-2,"25,50"\ns-3,"8,00"\n',
+    )
+    provider = ScriptedProvider(
+        RemediationDraft(
+            proposal=AutomaticRemediationDraft(
+                title="Normalize EUR values",
+                explanation="Apply the current locale contract.",
+                source_dataset_ref="D0",
+                operations=[
+                    ReplaceValuesDraft(
+                        column="amount_eur",
+                        replacements=[ReplacementDraft(from_value="25,50", to_value="25.50")],
+                    )
+                ],
+                expected_effects=["amount_eur becomes numeric."],
+                required_post_checks=["Check float type conformance."],
+            )
+        )
+    )
+    policy = PolicyGateway()
+    service = LiveRemediationService(
+        provider=provider,
+        catalog=ArtifactCatalog(database_path, data_root),
+        executor=RemediationExecutor(policy),
+        policy=policy,
+        resolver=resolver,
+    )
+    runbook_id = f"{uuid4()}:chunk:0"
+    artifact_evidence_id = f"artifact:{source.artifact_id}"
+    evidence = [
+        {
+            "evidence_id": runbook_id,
+            "source": "EUR formatting contract",
+            "excerpt": (
+                "The export uses a period as the thousands separator and a comma as the decimal "
+                "separator. Replace each documented representation and cast amount_eur to float."
+            ),
+            "relevance_score": 1.0,
+        },
+        {
+            "evidence_id": artifact_evidence_id,
+            "artifact_kind": "dataset",
+            "source": "sales.csv",
+            "excerpt": "Validated dataset metadata.",
+            "relevance_score": 1.0,
+        },
+    ]
+    diagnostics = [
+        {
+            "hypothesis_id": "locale",
+            "action": _diagnostic_action(
+                artifact_id=source.artifact_id,
+                tool=DiagnosticTool.PROFILE_DATASET.value,
+                arguments={"column": "amount_eur", "value_counts": True},
+            ),
+            "observed_signal": json.dumps(
+                {
+                    "metrics": {
+                        "value_counts": {"amount_eur": {"1.234,56": 1, "25,50": 1, "8,00": 1}}
+                    },
+                    "summary": "Profiled three locale-formatted values.",
+                    "warnings": [],
+                }
+            ),
+            "supports_hypothesis": False,
+        }
+    ]
+
+    proposal = service.propose(
+        incident_summary="EUR amounts remain strings under an en_US parser.",
+        verification={
+            "confirmed": True,
+            "root_cause_id": "locale",
+            "root_cause_codes": ["numeric_locale_mismatch"],
+            "reason": "The current locale contract and profile establish the mismatch.",
+            "evidence_ids": [runbook_id, artifact_evidence_id],
+        },
+        evidence=evidence,
+        diagnostics=diagnostics,
+    )
+
+    assert proposal["disposition"] == "automatic_fix"
+    assert proposal["operations"] == [
+        {
+            "operation": "replace_values",
+            "arguments": {
+                "column": "amount_eur",
+                "mapping": {
+                    "1.234,56": "1234.56",
+                    "25,50": "25.50",
+                    "8,00": "8.00",
+                },
+            },
+        },
+        {
+            "operation": "cast_column",
+            "arguments": {
+                "column": "amount_eur",
+                "target_type": "float",
+                "invalid_policy": "reject",
+            },
+        },
+    ]
+
+
+def test_live_remediation_replaces_incomplete_datetime_plan_with_proven_formats(
+    tmp_path: Path,
+) -> None:
+    data_root = tmp_path / "data"
+    database_path = tmp_path / "application.sqlite3"
+    repository = _repository(database_path)
+    case = _case(repository, "Datetime remediation case")
+    resolver = CasePathResolver(data_root)
+    source = _artifact(
+        repository=repository,
+        resolver=resolver,
+        case_id=case.case_id,
+        kind=ArtifactKind.DATASET,
+        filename="orders.csv",
+        content=(
+            "order_identifier,created_at\n"
+            "ord-1,2026-11-21T10:00:00Z\n"
+            'ord-2,"11/21/2026 10:05 AM UTC"\n'
+        ),
+    )
+    provider = ScriptedProvider(
+        RemediationDraft(
+            proposal=AutomaticRemediationDraft(
+                title="Restore order schema and timestamps",
+                explanation="Apply the current schema and accepted timestamp formats.",
+                source_dataset_ref="D0",
+                operations=[
+                    RenameColumn(from_name="order_identifier", to_name="order_id"),
+                    RejectingParseDatetimeDraft(
+                        column="created_at",
+                        accepted_formats=["MM/DD/YYYY hh:mm AM UTC"],
+                        timezone="UTC",
+                        on_error="reject",
+                    ),
+                ],
+                expected_effects=["The canonical schema and timestamps validate."],
+                required_post_checks=["Validate both timestamp formats."],
+            )
+        )
+    )
+    policy = PolicyGateway()
+    service = LiveRemediationService(
+        provider=provider,
+        catalog=ArtifactCatalog(database_path, data_root),
+        executor=RemediationExecutor(policy),
+        policy=policy,
+        resolver=resolver,
+    )
+    runbook_id = f"{uuid4()}:chunk:0"
+    artifact_evidence_id = f"artifact:{source.artifact_id}"
+    accepted_formats = ["rfc3339", "MM/DD/YYYY hh:mm AM UTC"]
+
+    proposal = service.propose(
+        incident_summary="A rename and mixed timestamps block ingestion.",
+        verification={
+            "confirmed": True,
+            "root_cause_id": "schema",
+            "root_cause_codes": ["schema_column_renamed", "mixed_datetime_formats"],
+            "reason": "The contract and bounded parse diagnostic prove both faults.",
+            "evidence_ids": [runbook_id, artifact_evidence_id],
+        },
+        evidence=[
+            {
+                "evidence_id": runbook_id,
+                "source": "schema contract",
+                "excerpt": "Rename order_identifier and accept both documented timestamp forms.",
+                "relevance_score": 1.0,
+            },
+            {
+                "evidence_id": artifact_evidence_id,
+                "artifact_kind": "dataset",
+                "source": "orders.csv",
+                "excerpt": "Validated dataset metadata.",
+                "relevance_score": 1.0,
+            },
+        ],
+        diagnostics=[
+            {
+                "hypothesis_id": "datetime",
+                "action": _diagnostic_action(
+                    artifact_id=source.artifact_id,
+                    tool=DiagnosticTool.CHECK_DATETIME_PARSE.value,
+                    arguments={
+                        "column": "created_at",
+                        "accepted_formats": accepted_formats,
+                    },
+                ),
+                "observed_signal": json.dumps(
+                    {
+                        "metrics": {
+                            "column": "created_at",
+                            "accepted_formats": accepted_formats,
+                            "parse_failure_count": 0,
+                            "parse_success_rate": 1.0,
+                        },
+                        "summary": "All values matched a declared format.",
+                        "warnings": [],
+                    }
+                ),
+                "supports_hypothesis": False,
+            }
+        ],
+    )
+
+    parse_operation = next(
+        operation
+        for operation in proposal["operations"]
+        if operation["operation"] == "parse_datetime"
+    )
+    assert parse_operation["arguments"]["accepted_formats"] == accepted_formats
+    assert parse_operation["arguments"]["on_error"] == "reject"
+
+
 def test_live_remediation_can_escalate_without_a_mutation_plan(tmp_path: Path) -> None:
     data_root = tmp_path / "data"
     database_path = tmp_path / "application.sqlite3"
@@ -800,16 +1298,18 @@ def test_live_remediation_can_escalate_without_a_mutation_plan(tmp_path: Path) -
         content='id,notes\n1,"truncated\n',
     )
     evidence_id = f"artifact:{source.artifact_id}"
+    supporting_evidence_id = f"{source.artifact_id}:chunk:0"
     provider = ScriptedProvider(
         RemediationDraft(
-            disposition="manual_escalation",
-            title="Quarantine the corrupt source",
-            explanation="The typed remediation DSL cannot reconstruct missing source bytes.",
-            source_artifact_id=source.artifact_id,
-            operations=[],
-            expected_effects=["An operator replaces the corrupt upstream export."],
-            required_post_checks=["Re-ingest a complete source file."],
-            citation_ids=[evidence_id],
+            proposal=ManualRemediationDraft(
+                disposition="manual_escalation",
+                title="Quarantine the corrupt source",
+                explanation="The typed remediation DSL cannot reconstruct missing source bytes.",
+                source_artifact_ref="A0",
+                operations=[],
+                expected_effects=["An operator replaces the corrupt upstream export."],
+                required_post_checks=["Re-ingest a complete source file."],
+            )
         )
     )
     policy = PolicyGateway()
@@ -826,19 +1326,28 @@ def test_live_remediation_can_escalate_without_a_mutation_plan(tmp_path: Path) -
         verification={
             "confirmed": True,
             "root_cause_id": "truncated",
+            "root_cause_codes": ["truncated_csv_corruption"],
             "reason": "The parser reached EOF inside a quoted field.",
+            "evidence_ids": [supporting_evidence_id],
         },
         evidence=[
+            {
+                "evidence_id": supporting_evidence_id,
+                "source": "corrupt.csv diagnostic chunk",
+                "excerpt": "The parser reached EOF inside a quoted field.",
+                "relevance_score": 1.0,
+            },
             {
                 "evidence_id": evidence_id,
                 "source": "corrupt.csv metadata",
                 "excerpt": "Validated source artifact metadata.",
                 "relevance_score": 1.0,
-            }
+            },
         ],
         diagnostics=[],
     )
 
     assert proposal["disposition"] == "manual_escalation"
     assert proposal["operations"] == []
+    assert proposal["citation_ids"] == [supporting_evidence_id]
     assert "plan_hash" not in proposal

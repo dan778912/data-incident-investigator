@@ -38,7 +38,9 @@ describe("Data Incident Investigator UI", () => {
 
     await user.click(await screen.findByRole("button", { name: /^evaluation$/i }));
     expect(await screen.findByRole("heading", { name: /evaluation snapshot/i })).toBeVisible();
-    expect(screen.getByText("91.7%")).toBeVisible();
-    expect(screen.getAllByText(/^(blocked|contained)$/i)).toHaveLength(4);
+    expect(screen.getByText("95.0%")).toBeVisible();
+    expect(screen.getByText(/Nemotron 3.5 Lightning 30B/i)).toBeVisible();
+    expect(screen.getAllByText(/^blocked$/i)).toHaveLength(4);
+    expect(screen.queryByText(/^contained$/i)).not.toBeInTheDocument();
   });
 });

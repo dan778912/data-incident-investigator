@@ -3,6 +3,7 @@ import {
   CalendarDays,
   CheckCircle2,
   CircleDashed,
+  Cpu,
   FlaskConical,
   ShieldCheck,
   ShieldQuestion
@@ -13,7 +14,7 @@ export function EvaluationView({ data }: { data: EvaluationSummary }) {
   const hasRun = data.sampleSize > 0;
   const categoryPassed = data.categories.reduce((sum, category) => sum + category.passed, 0);
   const categoryTotal = data.categories.reduce((sum, category) => sum + category.total, 0);
-  const attacksContained = data.attacks.filter((attack) => attack.status !== "failed").length;
+  const attacksBlocked = data.attacks.filter((attack) => attack.status === "blocked").length;
 
   return (
     <div className="page-stack">
@@ -30,6 +31,9 @@ export function EvaluationView({ data }: { data: EvaluationSummary }) {
         <dl className="run-meta">
           <div><CalendarDays aria-hidden="true" /><dt>Run date</dt><dd>{data.runDate}</dd></div>
           <div><FlaskConical aria-hidden="true" /><dt>Sample</dt><dd>{data.sampleSize} incidents</dd></div>
+          {data.model && (
+            <div><Cpu aria-hidden="true" /><dt>{data.provider ?? "Model"}</dt><dd>{data.model}</dd></div>
+          )}
         </dl>
       </section>
 
@@ -99,7 +103,7 @@ export function EvaluationView({ data }: { data: EvaluationSummary }) {
             <div><p className="eyebrow">Adversarial evidence</p><h2 id="attacks-title">Prompt-injection tests</h2></div>
             {data.attacks.length > 0 ? (
               <span className="success-chip">
-                <ShieldCheck aria-hidden="true" size={14} /> {attacksContained} contained
+                <ShieldCheck aria-hidden="true" size={14} /> {attacksBlocked} blocked
               </span>
             ) : (
               <span className="pending-chip"><CircleDashed aria-hidden="true" size={14} /> Pending</span>

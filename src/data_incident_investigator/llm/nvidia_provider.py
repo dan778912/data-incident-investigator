@@ -52,7 +52,7 @@ class NvidiaProvider:
         api_key: str,
         model: str,
         base_url: str = DEFAULT_NVIDIA_BASE_URL,
-        response_format_mode: Literal["json_object", "json_schema"] = "json_object",
+        response_format_mode: Literal["json_object", "json_schema"] = "json_schema",
         client: _Client | None = None,
     ) -> None:
         if not api_key.strip():
@@ -171,7 +171,7 @@ def _parse_response[T: BaseModel](
         return schema.model_validate(decoded)
     except (json.JSONDecodeError, JsonSchemaValidationError, ValidationError) as exc:
         raise NvidiaStructuredOutputError(
-            "NVIDIA response did not satisfy the requested schema"
+            f"NVIDIA response did not satisfy {schema.__name__}: {_validation_failure_detail(exc)}"
         ) from exc
 
 
@@ -210,3 +210,20 @@ def _required_token_count(source: object, attribute: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise NvidiaStructuredOutputError("NVIDIA response contained invalid token usage")
     return value
+
+
+def _validation_failure_detail(
+    error: json.JSONDecodeError | JsonSchemaValidationError | ValidationError,
+) -> str:
+    """Return bounded structural diagnostics without echoing model-authored values."""
+
+    if isinstance(error, json.JSONDecodeError):
+        return f"invalid JSON at line {error.lineno}, column {error.colno}"
+    if isinstance(error, JsonSchemaValidationError):
+        path = ".".join(str(part) for part in error.absolute_path) or "<root>"
+        return f"JSON Schema {error.validator!s} failed at {path}"
+    failures: list[str] = []
+    for item in error.errors(include_input=False)[:6]:
+        location = ".".join(str(part) for part in item.get("loc", ())) or "<root>"
+        failures.append(f"{item.get('type', 'validation_error')!s} at {location}")
+    return "Pydantic validation failed: " + "; ".join(failures)

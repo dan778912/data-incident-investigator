@@ -26,6 +26,7 @@ class EvidenceRecord(TypedDict):
     relevance_score: float
     source_id: NotRequired[str]
     retrieval_round: NotRequired[int]
+    artifact_kind: NotRequired[str]
 
 
 class EvidenceAssessment(TypedDict):
@@ -65,6 +66,9 @@ class VerificationRecord(TypedDict):
     root_cause_ids: NotRequired[list[str]]
     root_cause_codes: NotRequired[list[str]]
     evidence_ids: NotRequired[list[str]]
+    taxonomy_guard_applied: NotRequired[bool]
+    taxonomy_rule_ids: NotRequired[list[str]]
+    model_root_cause_codes: NotRequired[list[str]]
 
 
 class PatchOperation(TypedDict):

@@ -35,6 +35,6 @@ describe("EvaluationView", () => {
     expect(screen.getByText(/adversarial traces pending/i)).toBeVisible();
     expect(screen.getAllByText("Not run")).toHaveLength(2);
     expect(screen.queryByText(/22 \/ 24 passed/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/3 contained/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/3 blocked/i)).not.toBeInTheDocument();
   });
 });

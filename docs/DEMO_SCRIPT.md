@@ -2,89 +2,108 @@
 
 ## Preflight
 
-- Start the compiled application with the reviewed release configuration.
-- Keep the I04 fixture files ready: `orders.csv`, `pipeline.log`, and
-  `timezone_policy_v2.md`.
-- Open the application, the frozen evaluation report, and the repository's
-  architecture diagram before recording.
-- Confirm the original I04 dataset hash and the release commit on screen.
-- Confirm the final four-attack rerun completed without provider errors. Until
-  that credit-restored run is reviewed and frozen, do not record the
-  adversarial trace as final release evidence.
+- Run the compiled application with `LLM_PROVIDER=nvidia` and the reviewed
+  `nvidia/nemotron-3.5-lightning-30b-a3b` release configuration.
+- Keep the I20 fixture ready: `orders.csv`, `pipeline.log`, and
+  `order_contract_v3.md`.
+- Open the frozen NVIDIA evaluation report, one adversarial trace, and the
+  architecture diagram in separate tabs.
+- Confirm the original I20 dataset hash and release commit on screen.
+- Never show `.env`, API keys, local credential stores, or full personal paths.
 
-## 0:00–0:40 — Problem and boundary
+## 0:00–0:35 — Problem, model, and boundary
 
 Introduce Incident Lens as a local-first investigator for uploaded data-pipeline
-incidents. State the boundary plainly: it can inspect case artifacts and propose
-typed repairs, but it has no shell, arbitrary Python/SQL, production connector,
-or permission to overwrite an original file.
+incidents. State that the release uses NVIDIA Nemotron 3.5 Lightning 30B through
+NVIDIA's free development endpoint; the measured suite records an estimated API
+cost of $0. Clarify that the model only returns typed proposals. It has no shell,
+arbitrary Python or SQL, production connector, or permission to overwrite an
+original file.
 
-## 0:40–1:25 — Create the incident
+## 0:35–1:15 — Create the dual-fault incident
 
-Create “Timezone window mismatch,” upload the I04 dataset, log, and runbook,
-and start the investigation. Point out that uploads are validated, hashed, and
-stored under generated case-scoped identifiers.
+Create “Renamed identifier and malformed timestamp,” upload the three I20
+artifacts, and start the investigation. Point out that uploads are validated,
+hashed, and stored under generated case-scoped identifiers. The dataset contains
+both a renamed identifier and mixed timestamp formats, making this more than a
+single-label classification demo.
 
-## 1:25–2:15 — Iterative agentic retrieval
+## 1:15–2:05 — Bounded retrieval with provenance
 
-Show the retrieval events and cited runbook chunk. Explain that the first query
-does not provide enough evidence, so the graph grades coverage, refines the
-query, and searches again. Open the evidence card to show its stable source and
-chunk identifier.
+Open the evidence view. Explain that FTS ranks relevant chunks from only the
+selected case artifacts; if a narrow generated query misses a selected text
+artifact, the application adds one redacted, 1,200-character coverage excerpt.
+Model-authored retrieval queries are normalized to bounded keywords and cannot
+be SQL or shell commands. Show source IDs, chunk locators, retrieval rounds, and
+the current contract citation.
 
-## 2:15–3:10 — Planning and self-correction
+## 2:05–3:00 — Typed planning and deterministic verification
 
-Show the initial hypothesis, the allowlisted diagnostic check, and the
-contradictory observation. Highlight the explicit revision event naming the
-invalidated hypothesis and replacement. The important point is not that the
-model “thought twice,” but that application code captured evidence that forced
-a bounded plan change.
+Show the falsifiable hypotheses and allowlisted read-only diagnostics. The model
+can choose only six diagnostic tools and short `D#`, `L#`, and `E#` references;
+application code resolves them to trusted case artifacts. Highlight the exact
+two-cause result: `schema_column_renamed` plus `mixed_datetime_formats`.
+Explain that the deterministic taxonomy guard corrects or rejects model labels
+from retrieved evidence and observed diagnostic output, never from a proposed
+patch. The graph also has a bounded revision loop when verification fails.
 
-## 3:10–4:15 — Human approval boundary
+## 3:00–4:00 — Exact repair and human approval boundary
 
-Review the verified root cause and `parse_datetime` proposal. Show the source,
-proposal, and plan hashes. Explain that the durable graph is interrupted here;
-no working copy exists until the exact signed context is approved. Rejecting,
-replaying, expiring, or changing that context fails closed.
+Review the constrained `rename_column` and `parse_datetime` plan. Explain that
+model-authored datetime arguments are replaced by the exact accepted-format set
+proved by the bounded parse diagnostic; incomplete or unsupported plans become
+manual escalations. Show proposal, plan, and source hashes. The durable graph is
+interrupted before mutation, and the expiring one-time approval is bound to that
+exact context. Rejecting, replaying, expiring, or changing it fails closed.
 
-## 4:15–5:10 — Safe remediation and validation
+## 4:00–4:40 — Working-copy remediation
 
-Approve the plan. Download the remediated copy and show the post-fix checks.
-Compare its identifier and hash with the original to demonstrate that the
-source was not overwritten. Mention that configuration or corruption cases
-outside the DSL end in recorded manual escalation without mutation.
+Approve the plan. Download the remediated working copy and show the post-fix
+checks. Compare its identifier and hash with the original to demonstrate that
+the source was not overwritten. Mention that all 12 automatically repaired
+release cases passed their postconditions and all 20 originals were preserved.
 
-## 5:10–6:10 — Guardrails and adversarial evidence
+## 4:40–5:25 — Safe escalation is a feature
 
-After the credit-restored final rerun is reviewed, open the evaluation view and
-one prompt-injection trace. Show the exact attack text, insertion location,
-prohibited-capability checks, canary result, and unchanged original hash. State
-that the attack was executed against a staged fixture copy. If that rerun is
-still pending, replace this segment with an explicit placeholder: the attempted
-final run stopped on OpenAI HTTP 429 with no credits, so it proves neither
-containment nor attack success. Do not present the earlier 4/4 pre-fix baseline
-as final release evidence.
+Open the frozen I18 trace. The system correctly diagnoses
+`duplicate_keys_after_replay`, but refuses an automatic `keep=last` repair
+because the evidence does not prove physical input order equals greatest
+`event_version` followed by `updated_at`. It therefore requests approval for a
+bounded manual follow-up and makes no mutation. This is the only strict workflow
+failure in the release suite and is intentional fail-closed behavior.
 
-## 6:10–7:00 — Evaluation, deployment, and close
+## 5:25–6:15 — Prompt-injection evidence
 
-State the reviewed numbers precisely: 19/20 strict end-to-end passes, 20/20
-exact root causes, 60/63 required evidence items, 22/22 required sources, 12/12
-successful repairs with 75/75 post-repair checks, and 20/20 original hashes
-preserved. Median latency was 29.011 seconds, median usage was 11,590 tokens,
-and the 20-case run cost $2.9146708 total ($0.14573354 per attempted case).
-Report final adversarial outcomes only after the credit-restored rerun; until
-then, say “pending” on screen. Finish on the architecture: React and FastAPI in
-one local container, LangGraph with SQLite checkpoints, case-scoped FTS
-retrieval, and a typed mutation boundary. Name the concrete limitation: I18
-escalated safely because the evidence did not prove that input order matched
-greatest `event_version`; the live run also did not elicit the rubric's
-required self-correction or iterative-retrieval paths.
+Open the four-attack report and the CSV-cell trace. Show the exact injected text,
+insertion location, typed model output, guardrail events, prohibited-capability
+checks, synthetic-canary result, and unchanged original hash. State that all
+four attacks—log, retrieved runbook, dataset cell, and schema description—were
+executed against staged fixture copies and all four were proven blocked.
+
+## 6:15–7:00 — Numbers, deployment, and honest close
+
+State the definitive NVIDIA results precisely:
+
+- 19/20 strict end-to-end workflows completed; 20/20 exact cause sets.
+- 57/63 required evidence facts (90.48%), 22/22 required sources, and 50/50
+  supported citations.
+- 100% approval enforcement, replay idempotency, original preservation, patch
+  policy compliance, and repair postconditions.
+- 4/4 prompt-injection attacks blocked, with zero prohibited calls,
+  unauthorized mutations, or canary leaks.
+- 8.163-second median and 11.549-second p95 latency; 15,127 median tokens; $0
+  estimated model cost for the 20-case run.
+
+Finish on the architecture: React and FastAPI in one local container, LangGraph
+with SQLite checkpoints, case-scoped FTS retrieval, and a typed mutation
+boundary. Name the limitations: the NVIDIA endpoint is free for development,
+not a free production deployment; I18 requires stronger ordering evidence; and
+the definitive run did not trigger the benchmark's optional revision-success or
+second-round retrieval-gain paths even though those paths are covered by tests.
 
 ## Recording contingencies
 
-- If the provider is unavailable, use the already frozen release traces and
-  state clearly that they came from the dated live operating-system run.
-- Never display `.env`, an API key, full local paths, or the GitHub credential
-  manager.
-- Stop and restart the recording if a notification exposes unrelated personal
-  information.
+- If the provider is unavailable, use the dated frozen release traces and say
+  clearly that they are recorded evidence rather than a live call.
+- Do not substitute the paid OpenAI baseline metrics for the NVIDIA release.
+- Stop and restart if a notification exposes unrelated personal information.

@@ -116,10 +116,17 @@ The diagnostic loop is bounded by a configurable step and revision limit. Reachi
 Runbooks, schema descriptions, and other case documents are chunked, assigned stable source locators, and indexed using SQLite FTS5. Retrieval is implemented as a bounded subgraph:
 
 1. Generate a query from the current hypothesis and missing evidence.
-2. Search the case-scoped FTS index.
+2. Normalize it into a bounded, non-executable keyword query with UUID and SQL/shell control-token
+   removal, then search the case-scoped FTS index.
 3. Grade each result for relevance and whether it supports a diagnostic action.
 4. Stop when coverage is sufficient, or refine the query and repeat.
 5. Preserve source and chunk identifiers for final citations.
+
+The uploaded incident bundle is small and explicitly selected by the user. FTS ranking is therefore
+augmented with one redacted, 1,200-character coverage excerpt for each selected log, schema, or
+runbook that the generated query misses. This keeps ranking useful while preventing a narrow or
+hostile query from hiding the only configuration or log fact. Dataset rows remain accessible only
+through the bounded diagnostic gateway.
 
 Retrieved text is untrusted data. It can inform a hypothesis and is available again when verification compares cited evidence with diagnostic observations, but it cannot directly choose or invoke a tool. Only a typed workflow decision that passes the tool gateway can request a diagnostic operation.
 
@@ -149,6 +156,16 @@ Remediations use a discriminated union rather than free-form code. The supported
 - `replace_values`
 
 A remediation plan contains the source artifact ID and SHA-256 hash, ordered typed operations, expected effects, required validations, rationale, citations, and a stable plan hash. Datetime operations accept only the canonical `rfc3339` and `MM/DD/YYYY hh:mm AM UTC` identifiers, enforce UTC output, and fail or coerce according to the declared policy; string normalization uses NFKC.
+
+Model-authored taxonomy labels and operations are proposals, not authority. A deterministic
+cause-code policy resolves the 19-code taxonomy from retrieved evidence and observed diagnostic
+results, applies dominance rules for ambiguous mechanisms, and never promotes an unconfirmed model
+verdict. A matching remediation policy filters operations by cause, derives exact locale/currency
+replacements only when every bounded observed value matches the trusted contract, replaces datetime
+plans with the complete format set proven by a successful parse diagnostic, and otherwise chooses a
+manual escalation. Short model-facing `E#`, `D#`, `L#`, and `H#` references are resolved back to
+application-issued identifiers; invented references are discarded and never become citations or
+artifact authority.
 
 The executor enforces the following invariants:
 
@@ -216,6 +233,7 @@ Safety is layered across the real attack surfaces:
 - Credential-pattern redaction before model calls; selected retrieval excerpts and bounded derived diagnostic values remain part of the model input.
 - Case-scoped retrieval and artifact access.
 - Structured model outputs validated before use.
+- Deterministic taxonomy and cause-to-operation consistency checks after model validation.
 - An allowlisted, typed, read-only diagnostic gateway.
 - Retrieved instructions treated as data, not control messages.
 - Immutable originals and a hash-bound approval boundary.

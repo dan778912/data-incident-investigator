@@ -31,12 +31,20 @@ fourth advanced capability.
 |---|---|
 | Deterministic end-to-end workflow | Working and covered by integration tests |
 | React investigation/approval dashboard | Working in mock mode and connected to the live API |
-| Live structured-reasoning adapters | OpenAI baseline completed at 19/20 strict passes and 20/20 exact root causes; NVIDIA Nemotron 3.5 Lightning is implemented, offline-verified, and awaiting live qualification |
+| Live structured-reasoning adapters | NVIDIA Nemotron 3.5 Lightning completed at 19/20 strict passes and 20/20 exact root causes; the measured OpenAI run is retained as a paid baseline |
 | Signed approval and replay protection | Working with a durable SQLite nonce ledger |
 | Typed remediation on immutable working copies | Working with final-state post-fix checks and manual escalation outside the safe DSL |
-| Evaluation system | The reviewed OpenAI suite is retained as a baseline; the selected NVIDIA release must pass its own live suite and four provider-matched attacks before evidence is frozen |
+| Evaluation system | The definitive NVIDIA suite achieved 100% exact causes, 100% citation precision, and 4/4 blocked attacks with zero safety violations |
 | Container and CI | Remote CI passed backend, frontend, and container jobs; local Docker rehearsal remains |
-| Submission artifacts | Process log, live evaluation report, 13-slide deck, and seven-minute demo script are drafted; NVIDIA qualification, the final evidence freeze, and recorded video remain |
+| Submission artifacts | Sanitized evaluation evidence is frozen with SHA-256 hashes; report, 13-slide deck, and seven-minute demo script are prepared; recorded video remains |
+
+The definitive release evidence is in [`submission/evaluation`](submission/evaluation): 19 of 20
+workflows reached a remediation decision, all 20 produced the exact root-cause set, required-evidence
+recall was 57/63 (90.48%), required-source recall and citation precision were both 100%, and all four
+prompt-injection attacks were blocked. The one strict workflow failure, I18, is an intentional safe
+escalation: the evidence did not prove that physical input order matched version order, so the
+system refused an unsafe keep-last repair. The NVIDIA endpoint produced a $0 configured cost
+estimate for this development run; that is not a guarantee of perpetual or production pricing.
 
 The default `LLM_PROVIDER=fake` is deliberate. It gives development and CI a reproducible scenario
 that visibly performs an insufficient retrieval, refines the query, disproves a null hypothesis,
@@ -96,9 +104,9 @@ NVIDIA_API_KEY=your-key-here
 NVIDIA_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
 ```
 
-The adapter uses NVIDIA's OpenAI-compatible Chat Completions endpoint in deterministic JSON mode,
-disables visible reasoning for complete structured responses, embeds the Pydantic validation
-schema in trusted instructions, and rejects any response that fails validation. NVIDIA provides
+The adapter uses NVIDIA's OpenAI-compatible Chat Completions endpoint with strict JSON Schema,
+disables visible reasoning for complete structured responses, embeds the same validation schema
+in trusted instructions, and rejects any response that fails validation. NVIDIA provides
 the hosted endpoint for prototyping, research, development, and testing; it can be rate-limited
 and is not a free production deployment.
 
@@ -213,6 +221,7 @@ web/                             React/TypeScript interface
 tests/                           Unit and integration tests
 evals/                           Frozen corpus, adversarial cases, schemas, and grader
 docs/                            Architecture and delivery plan
+submission/evaluation/          Sanitized live/adversarial evidence and SHA-256 manifest
 scripts/                         Native development and verification commands
 data/                            Ignored local databases and case artifacts
 ```
@@ -234,10 +243,10 @@ Interactive API documentation is available at `/docs` while the service is runni
 
 | Category | Claimed Feature / Guardrail / Eval | Source File(s) & Line Numbers | Key Class / Function | Notes / Scope |
 |---|---|---|---|---|
-| Advanced Feature 1 | Explicit planning and self-correction | [graph.py L242-L348](src/data_incident_investigator/workflow/graph.py#L242-L348); [graph.py L540-L551](src/data_incident_investigator/workflow/graph.py#L540-L551); [live.py L484-L700](src/data_incident_investigator/services/live.py#L484-L700) | `form_hypotheses()`, `verify_hypotheses()`, `revise_hypotheses()` | Falsifiable hypotheses, deterministic diagnostics, evidence-aware verification, and a bounded revision loop with traceable replacements. |
-| Advanced Feature 2 | Iterative retrieval-augmented investigation | [graph.py L104-L240](src/data_incident_investigator/workflow/graph.py#L104-L240); [fts.py L97-L218](src/data_incident_investigator/retrieval/fts.py#L97-L218); [live.py L426-L482](src/data_incident_investigator/services/live.py#L426-L482) | `build_investigation_graph()`, `FtsRunbookRepository`, `LiveRetrievalService` | Configurable bounded query refinement over selected artifacts with redacted, versioned, round-tagged evidence and citations. |
+| Advanced Feature 1 | Explicit planning and self-correction | [graph.py L242-L348](src/data_incident_investigator/workflow/graph.py#L242-L348); [graph.py L540-L551](src/data_incident_investigator/workflow/graph.py#L540-L551); [live.py L790-L1166](src/data_incident_investigator/services/live.py#L790-L1166); [cause_policy.py](src/data_incident_investigator/services/cause_policy.py) | `form_hypotheses()`, `verify_hypotheses()`, `revise_hypotheses()`, `DeterministicCauseCodePolicy` | Falsifiable hypotheses, deterministic diagnostics and taxonomy, evidence-aware verification, and a bounded revision loop with traceable replacements. |
+| Advanced Feature 2 | Iterative retrieval-augmented investigation | [graph.py L104-L240](src/data_incident_investigator/workflow/graph.py#L104-L240); [fts.py L97-L218](src/data_incident_investigator/retrieval/fts.py#L97-L218); [live.py L109-L137](src/data_incident_investigator/services/live.py#L109-L137); [live.py L707-L916](src/data_incident_investigator/services/live.py#L707-L916) | `build_investigation_graph()`, `FtsRunbookRepository`, `LiveRetrievalService`, `_bounded_retrieval_query()` | Bounded query refinement over selected artifacts with non-executable keyword normalization, redacted per-artifact coverage, versioned evidence, and citations. |
 | Advanced Feature 3 | Durable human-in-the-loop approval | [graph.py L378-L478](src/data_incident_investigator/workflow/graph.py#L378-L478); [approval.py L57-L230](src/data_incident_investigator/services/approval.py#L57-L230); [main.py L412-L447](src/data_incident_investigator/api/main.py#L412-L447) | `approval_gate()`, `HMACApprovalBindingService`, `SQLiteApprovalLedger`, `decide_approval()` | Durable interrupt before mutation; approval is hash-bound, expiring, and atomically single-use. |
-| Guardrails | Typed structured output, diagnostics and remediation; working-copy-only execution; deterministic post-fix checks | [live.py L70-L247](src/data_incident_investigator/services/live.py#L70-L247); [policy.py L18-L55](src/data_incident_investigator/security/policy.py#L18-L55); [engine.py L36-L278](src/data_incident_investigator/diagnostics/engine.py#L36-L278); [live.py L703-L982](src/data_incident_investigator/services/live.py#L703-L982); [executor.py L61-L460](src/data_incident_investigator/remediation/executor.py#L61-L460) | Task-specific draft models, `PolicyGateway`, `DiagnosticEngine`, `LiveDiagnosticService`, `LiveRemediationService`, `RemediationExecutor.apply()` | No arbitrary tools or code execution; schemas are checked offline; matching log context is bounded and redacted; canonical datetime formats are enforced; and failed final-state or integrity checks delete the output. |
+| Guardrails | Typed structured output, diagnostics and remediation; working-copy-only execution; deterministic post-fix checks | [live.py L225-L528](src/data_incident_investigator/services/live.py#L225-L528); [policy.py L18-L55](src/data_incident_investigator/security/policy.py#L18-L55); [engine.py L36-L278](src/data_incident_investigator/diagnostics/engine.py#L36-L278); [live.py L1168-L1649](src/data_incident_investigator/services/live.py#L1168-L1649); [executor.py L61-L460](src/data_incident_investigator/remediation/executor.py#L61-L460) | Task-specific draft models, `PolicyGateway`, `DiagnosticEngine`, `LiveDiagnosticService`, `LiveRemediationService`, `RemediationExecutor.apply()` | No arbitrary tools or code execution; schemas are checked offline; matching log context is bounded and redacted; cause-to-operation consistency and exact datetime formats are enforced; and failed final-state or integrity checks delete the output. |
 | Adversarial Evals | Four prompt-injection attacks executed through the live workflow | [adversarial_runner.py L202-L452](evals/adversarial_runner.py#L202-L452); [adversarial_runner.py L506-L601](evals/adversarial_runner.py#L506-L601); [adversarial_runner.py L779-L949](evals/adversarial_runner.py#L779-L949) | `stage_attack()`, `AdversarialEvaluationRunner`, `classify_attack()` | Exact log, runbook, cell, and schema injections; fail-closed classification checks prohibited capabilities, approval ordering, canary leakage, and original hashes. |
 | Evaluation Harness | Frozen 20-case end-to-end suite with computable metrics and validated traces | [live_runner.py L135-L632](evals/live_runner.py#L135-L632); [graders.py L16-L394](evals/harness/graders.py#L16-L394); [trace.py L19-L80](evals/harness/trace.py#L19-L80) | `LiveEvaluationRunner`, `_evaluation_failure_reason()`, `grade_suite()`, `TraceValidator` | Measures diagnosis, repair, self-correction, RAG, HITL, safety, latency, tokens, and estimated cost; logical run failures return a nonzero exit. |
 | Deployment / Persistence | Single durable container with SQLite/FTS/checkpoint persistence and CI | [main.py L94-L178](src/data_incident_investigator/api/main.py#L94-L178); [Dockerfile L3-L68](Dockerfile#L3-L68); [compose.yaml L3-L45](compose.yaml#L3-L45); [ci.yml L16-L103](.github/workflows/ci.yml#L16-L103) | `create_app()`, `AsyncSqliteSaver`, Compose `app`, CI jobs | Named-volume persistence, non-root read-only container, health check, and backend/frontend/container quality gates; intentionally single-instance rather than multi-replica. |
@@ -247,4 +256,4 @@ The [detailed capability-to-code map](docs/CAPABILITY_MAP.md) is the supplementa
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the component and trust-boundary design,
 [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) for the delivery schedule and definition of done, and
 [docs/EVALUATION_REPORT.md](docs/EVALUATION_REPORT.md) for the reviewed live results, explicit
-limitations, and the remaining credit-restored adversarial rerun.
+limitations, and the provider-matched adversarial results.

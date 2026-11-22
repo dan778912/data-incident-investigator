@@ -6,8 +6,7 @@ from typing import Any
 import httpx
 import pytest
 from openai import APITimeoutError
-from openai.lib._pydantic import to_strict_json_schema
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from data_incident_investigator.llm.nvidia_provider import (
     NvidiaProvider,
@@ -30,6 +29,17 @@ class Answer(BaseModel):
 class DefaultedAnswer(BaseModel):
     value: str
     explanation: str = "default"
+
+
+class CrossFieldAnswer(BaseModel):
+    first: str
+    second: str
+
+    @model_validator(mode="after")
+    def fields_must_differ(self) -> CrossFieldAnswer:
+        if self.first == self.second:
+            raise ValueError("fields must differ")
+        return self
 
 
 class FakeCompletions:
@@ -113,27 +123,25 @@ def test_provider_returns_typed_json_object_result() -> None:
     assert system_content.startswith("Return a structured diagnosis.")
     assert '"additionalProperties":false' in system_content
     assert '"root_cause"' in system_content
-    assert request["response_format"] == {"type": "json_object"}
+    assert request["response_format"]["type"] == "json_schema"
+    assert request["response_format"]["json_schema"]["strict"] is True
     assert request["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
     assert "safety_identifier" not in request
 
 
-def test_provider_can_opt_into_strict_json_schema_format() -> None:
+def test_provider_can_opt_into_json_object_compatibility_mode() -> None:
     resource = FakeCompletions('{"root_cause":"x","confidence":1}')
     provider = NvidiaProvider(
         api_key="test",
         model="nvidia/test-model",
-        response_format_mode="json_schema",
+        response_format_mode="json_object",
         client=FakeClient(resource),
     )
 
     provider.generate(schema=Answer, instructions="Diagnose.", user_input="Incident.")
 
     response_format = resource.calls[0]["response_format"]
-    assert response_format["type"] == "json_schema"
-    assert response_format["json_schema"]["name"] == "Answer"
-    assert response_format["json_schema"]["strict"] is True
-    assert response_format["json_schema"]["schema"] == to_strict_json_schema(Answer)
+    assert response_format == {"type": "json_object"}
 
 
 @pytest.mark.parametrize(
@@ -196,6 +204,26 @@ def test_provider_enforces_strict_schema_before_pydantic(
         provider.generate(schema=schema, instructions="Return JSON.", user_input="Incident.")
 
     assert len(resource.calls) == 1
+
+
+def test_provider_reports_bounded_structural_pydantic_failures_without_values() -> None:
+    resource = FakeCompletions('{"first":"secret-canary","second":"secret-canary"}')
+    provider = NvidiaProvider(
+        api_key="test",
+        model="nvidia/test-model",
+        client=FakeClient(resource),
+    )
+
+    with pytest.raises(NvidiaStructuredOutputError) as caught:
+        provider.generate(
+            schema=CrossFieldAnswer,
+            instructions="Return JSON.",
+            user_input="Incident.",
+        )
+
+    message = str(caught.value)
+    assert "value_error at <root>" in message
+    assert "secret-canary" not in message
 
 
 @pytest.mark.parametrize(
