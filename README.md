@@ -31,17 +31,17 @@ fourth advanced capability.
 |---|---|
 | Deterministic end-to-end workflow | Working and covered by integration tests |
 | React investigation/approval dashboard | Working in mock mode and connected to the live API |
-| OpenAI structured-reasoning adapter | Definitive 20-case live run completed on `gpt-6.2-astra`: 19/20 strict end-to-end passes and 20/20 exact root causes, with reviewed token/cost accounting |
+| Live structured-reasoning adapters | OpenAI baseline completed at 19/20 strict passes and 20/20 exact root causes; NVIDIA Nemotron 3.5 Lightning is implemented, offline-verified, and awaiting live qualification |
 | Signed approval and replay protection | Working with a durable SQLite nonce ledger |
 | Typed remediation on immutable working copies | Working with final-state post-fix checks and manual escalation outside the safe DSL |
-| Evaluation system | The reviewed live suite is complete; the final four-attack adversarial rerun remains pending after the provider failed closed with HTTP 429 because the account had no credits |
+| Evaluation system | The reviewed OpenAI suite is retained as a baseline; the selected NVIDIA release must pass its own live suite and four provider-matched attacks before evidence is frozen |
 | Container and CI | Remote CI passed backend, frontend, and container jobs; local Docker rehearsal remains |
-| Submission artifacts | Process log, live evaluation report, 13-slide deck, and seven-minute demo script are drafted; the credit-restored adversarial freeze and recorded video remain |
+| Submission artifacts | Process log, live evaluation report, 13-slide deck, and seven-minute demo script are drafted; NVIDIA qualification, the final evidence freeze, and recorded video remain |
 
 The default `LLM_PROVIDER=fake` is deliberate. It gives development and CI a reproducible scenario
 that visibly performs an insufficient retrieval, refines the query, disproves a null hypothesis,
-revises to a type-drift hypothesis, and stops for approval. `LLM_PROVIDER=openai` enables the live
-typed-reasoning services.
+revises to a type-drift hypothesis, and stops for approval. `LLM_PROVIDER=nvidia` selects the free
+development endpoint; `LLM_PROVIDER=openai` retains the measured paid baseline.
 
 ## Safety boundary
 
@@ -84,6 +84,24 @@ npm --prefix web run build
 
 FastAPI then serves both the API and `web/dist` at `http://127.0.0.1:8000`.
 
+## Enable live NVIDIA reasoning
+
+For the zero-API-cost capstone configuration, generate an NVIDIA Developer API key at
+[`build.nvidia.com`](https://build.nvidia.com/nvidia/nemotron-3.5-lightning-30b-a3b/build),
+then edit the ignored `.env` file locally:
+
+```dotenv
+LLM_PROVIDER=nvidia
+NVIDIA_API_KEY=your-key-here
+NVIDIA_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
+```
+
+The adapter uses NVIDIA's OpenAI-compatible Chat Completions endpoint in deterministic JSON mode,
+disables visible reasoning for complete structured responses, embeds the Pydantic validation
+schema in trusted instructions, and rejects any response that fails validation. NVIDIA provides
+the hosted endpoint for prototyping, research, development, and testing; it can be rate-limited
+and is not a free production deployment.
+
 ## Enable live OpenAI reasoning
 
 Edit the ignored `.env` file locally:
@@ -98,10 +116,6 @@ Do not paste an API key into an issue, chat, commit, screenshot, or evaluation a
 adapter uses the Responses API with Pydantic structured outputs and `store=False`. Changing to the
 live provider does not broaden the tool boundary: the model proposes typed data, while application
 code owns retrieval, diagnostics, approval, and file changes.
-
-NVIDIA credentials are not required for the committed scope. The configuration reserves an NVIDIA
-provider name, but that adapter is intentionally not implemented unless evaluation shows a concrete
-need for it.
 
 ## What “install Docker later” means
 
@@ -150,10 +164,11 @@ npm --prefix web test
 npm --prefix web run build
 ```
 
-Run the real 20-case workflow suite after setting `OPENAI_API_KEY` in the ignored `.env` file:
+Run the real 20-case workflow suite after configuring the selected provider in the ignored `.env`
+file. Pass the provider explicitly so the release identity is unambiguous:
 
 ```powershell
-.\.venv\Scripts\dii-run-evals.exe --limit 20
+.\.venv\Scripts\dii-run-evals.exe --provider nvidia --limit 20
 ```
 
 The command writes dated raw states, schema-validated traces, observations, a machine-readable
@@ -163,6 +178,7 @@ summary:
 
 ```powershell
 .\.venv\Scripts\python.exe -m evals.adversarial_runner `
+  --provider nvidia `
   --summary evals\results\<live-run>\summary.json
 ```
 

@@ -55,6 +55,7 @@ _STOP_WORDS = {
     "were",
     "with",
 }
+_LIVE_PROVIDERS = ("openai", "nvidia")
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +133,36 @@ def _evaluation_client(app: Any) -> TestClient:
     return TestClient(app, raise_server_exceptions=True)
 
 
+def live_model_name(settings: Settings) -> str:
+    """Return the configured model name for a supported live provider."""
+
+    if settings.llm_provider == "openai":
+        return settings.openai_model
+    if settings.llm_provider == "nvidia":
+        return settings.nvidia_model
+    raise ValueError("live evaluation requires LLM_PROVIDER=openai or nvidia")
+
+
+def select_live_provider(configured_provider: str, requested_provider: str | None) -> str:
+    """Select only an explicitly requested or explicitly configured live provider."""
+
+    if requested_provider in _LIVE_PROVIDERS:
+        return requested_provider
+    if requested_provider is not None:
+        raise ValueError(f"unsupported live provider: {requested_provider}")
+    if configured_provider in _LIVE_PROVIDERS:
+        return configured_provider
+    raise ValueError("select a live provider with --provider or set LLM_PROVIDER=openai or nvidia")
+
+
+def _validate_live_settings(settings: Settings) -> None:
+    live_model_name(settings)
+    if settings.llm_provider == "openai" and settings.openai_api_key is None:
+        raise ValueError("OPENAI_API_KEY is required for an OpenAI live evaluation")
+    if settings.llm_provider == "nvidia" and settings.nvidia_api_key is None:
+        raise ValueError("NVIDIA_API_KEY is required for an NVIDIA live evaluation")
+
+
 class LiveEvaluationRunner:
     def __init__(
         self,
@@ -141,10 +172,7 @@ class LiveEvaluationRunner:
         output_dir: Path,
         fail_fast: bool = False,
     ) -> None:
-        if settings.llm_provider != "openai":
-            raise ValueError("live evaluation requires LLM_PROVIDER=openai")
-        if settings.openai_api_key is None:
-            raise ValueError("OPENAI_API_KEY is required for a live evaluation")
+        _validate_live_settings(settings)
         self._settings = settings
         self._repository_root = repository_root.resolve()
         self._output_dir = output_dir.resolve()
@@ -451,7 +479,7 @@ class LiveEvaluationRunner:
                 "evaluation_date": datetime.now(UTC).date().isoformat(),
                 "generated_at": datetime.now(UTC).isoformat(),
                 "provider": self._settings.llm_provider,
-                "model": self._settings.openai_model,
+                "model": live_model_name(self._settings),
                 "corpus_version": manifest[0].corpus_version if manifest else "unknown",
                 "failed_runs": [
                     item.observation.fixture_id for item in outcomes if item.failure is not None
@@ -933,6 +961,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--fixture", action="append", default=[])
     parser.add_argument("--limit", type=int)
+    parser.add_argument(
+        "--provider",
+        choices=_LIVE_PROVIDERS,
+        help="Live provider to evaluate; otherwise LLM_PROVIDER must be openai or nvidia",
+    )
     parser.add_argument("--fail-fast", action="store_true")
     args = parser.parse_args(argv)
 
@@ -951,11 +984,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     base = Settings()
     output = (args.output or _default_output(repository_root)).resolve()
     runtime_dir = output / "runtime"
+    try:
+        provider = select_live_provider(base.llm_provider, args.provider)
+    except ValueError as exc:
+        parser.error(str(exc))
     settings = base.model_copy(
         update={
             "app_env": "test",
             "data_dir": runtime_dir,
-            "llm_provider": "openai",
+            "llm_provider": provider,
         }
     )
     runner = LiveEvaluationRunner(

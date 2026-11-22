@@ -6,9 +6,11 @@ from typing import cast
 import pytest
 from fastapi import FastAPI
 
+from data_incident_investigator.core.config import Settings
 from data_incident_investigator.llm import UsageSnapshot
 from evals.harness.manifest import load_manifest
 from evals.live_runner import (
+    LiveEvaluationRunner,
     RunOutcome,
     _category_results,
     _evaluation_client,
@@ -16,8 +18,11 @@ from evals.live_runner import (
     _expected_patch,
     _observation_from_state,
     _observed_patch,
+    live_model_name,
     load_fixture,
+    select_live_provider,
 )
+from evals.live_runner import main as live_main
 
 
 def test_evaluation_client_preserves_unexpected_server_exception_detail() -> None:
@@ -32,6 +37,107 @@ def test_evaluation_client_preserves_unexpected_server_exception_detail() -> Non
         pytest.raises(RuntimeError, match="structured output schema was rejected"),
     ):
         client.get("/boom")
+
+
+@pytest.mark.parametrize(
+    ("provider", "key_field", "model_field", "model"),
+    [
+        ("openai", "openai_api_key", "openai_model", "openai-test-model"),
+        ("nvidia", "nvidia_api_key", "nvidia_model", "nvidia/test-model"),
+    ],
+)
+def test_live_runner_accepts_supported_provider_and_reports_its_model(
+    provider: str,
+    key_field: str,
+    model_field: str,
+    model: str,
+    tmp_path: Path,
+) -> None:
+    root = Path(__file__).resolve().parents[2]
+    settings = Settings(
+        data_dir=tmp_path / "data",
+        llm_provider=provider,
+        **{key_field: "test-key", model_field: model},
+    )
+
+    runner = LiveEvaluationRunner(
+        settings=settings,
+        repository_root=root,
+        output_dir=tmp_path / "results",
+    )
+
+    assert runner is not None
+    assert live_model_name(settings) == model
+
+
+@pytest.mark.parametrize(
+    ("provider", "missing_key", "message"),
+    [
+        ("openai", "openai_api_key", "OPENAI_API_KEY"),
+        ("nvidia", "nvidia_api_key", "NVIDIA_API_KEY"),
+    ],
+)
+def test_live_runner_requires_selected_provider_credentials(
+    provider: str,
+    missing_key: str,
+    message: str,
+    tmp_path: Path,
+) -> None:
+    root = Path(__file__).resolve().parents[2]
+    settings = Settings(data_dir=tmp_path / "data", llm_provider=provider).model_copy(
+        update={missing_key: None}
+    )
+
+    with pytest.raises(ValueError, match=message):
+        LiveEvaluationRunner(
+            settings=settings,
+            repository_root=root,
+            output_dir=tmp_path / "results",
+        )
+
+
+def test_live_runner_rejects_non_live_provider(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[2]
+    settings = Settings(data_dir=tmp_path / "data", llm_provider="fake")
+
+    with pytest.raises(ValueError, match="openai or nvidia"):
+        LiveEvaluationRunner(
+            settings=settings,
+            repository_root=root,
+            output_dir=tmp_path / "results",
+        )
+
+
+def test_live_cli_never_defaults_fake_configuration_to_paid_openai(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    output = tmp_path / "must-not-exist"
+    monkeypatch.setenv("LLM_PROVIDER", "fake")
+    monkeypatch.setattr("evals.live_runner._default_output", lambda _root: output)
+
+    with pytest.raises(SystemExit, match="2"):
+        live_main(["--limit", "1"])
+
+    assert "--provider or set LLM_PROVIDER=openai or nvidia" in capsys.readouterr().err
+    assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    ("configured", "requested", "expected"),
+    [
+        ("fake", "nvidia", "nvidia"),
+        ("openai", None, "openai"),
+        ("nvidia", None, "nvidia"),
+    ],
+)
+def test_select_live_provider_requires_explicit_live_configuration(
+    configured: str,
+    requested: str | None,
+    expected: str,
+) -> None:
+    assert select_live_provider(configured, requested) == expected
 
 
 def test_load_fixture_resolves_only_declared_case_artifacts() -> None:

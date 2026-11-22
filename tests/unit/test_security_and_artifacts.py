@@ -120,6 +120,7 @@ def test_artifact_store_rejects_oversized_and_non_utf8_content(tmp_path: Path) -
 def test_redaction_removes_multiple_secret_shapes() -> None:
     text = (
         "key=sk-abcdefghijklmnopqrstuvwxyz123456 "
+        "nvidia=nvapi-abcdefghijklmnopqrstuvwxyz123456 "
         "Authorization: Bearer abcdefghijklmnopqrstuvwxyz "
         "password=hunter2secret"
     )
@@ -127,10 +128,12 @@ def test_redaction_removes_multiple_secret_shapes() -> None:
     redacted, events = redact_secrets(text)
 
     assert "sk-" not in redacted
+    assert "nvapi-" not in redacted
     assert "hunter2secret" not in redacted
     assert "Bearer abc" not in redacted
     assert {event.category for event in events} == {
         "openai_key",
+        "nvidia_key",
         "bearer_token",
         "assigned_secret",
     }

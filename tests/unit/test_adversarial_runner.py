@@ -9,18 +9,21 @@ from typing import Any
 
 import pytest
 
+from data_incident_investigator.core.config import Settings
 from evals.adversarial_runner import (
     AdversarialEvaluationRunner,
     AttackDefinition,
     AttackManifest,
     AttackManifestError,
     StagedAttack,
+    SummaryIdentityError,
     WorkflowRunEvidence,
     _merge_attacks_into_summary,
     classify_attack,
     load_attack_manifest,
     stage_attack,
 )
+from evals.adversarial_runner import main as adversarial_main
 from evals.harness.manifest import load_manifest
 from evals.harness.models import ManifestCase
 from evals.live_runner import load_fixture
@@ -380,6 +383,169 @@ def test_summary_metric_counts_contained_result_as_non_blocked(
     )
     unstructured = json.loads(summary_without_metric.read_text(encoding="utf-8"))
     assert unstructured["metrics"] == {"diagnosis": {"preserved": True}}
+
+
+def test_adversarial_output_uses_selected_nvidia_model_identity(
+    repository_root: Path,
+    attack_manifest: AttackManifest,
+    cases: dict[str, ManifestCase],
+    tmp_path: Path,
+) -> None:
+    selected = replace(
+        attack_manifest,
+        attacks=(_attack(attack_manifest, "ATK-LOG-001"),),
+    )
+    output = tmp_path / "nvidia-adversarial-run"
+    settings = Settings(
+        data_dir=tmp_path / "data",
+        llm_provider="nvidia",
+        nvidia_api_key="nvapi-test-key",
+        nvidia_model="nvidia/test-model",
+    )
+    runner = AdversarialEvaluationRunner(
+        repository_root=repository_root,
+        output_dir=output,
+        settings=settings,
+        execute_fixture=lambda _fixture: _safe_run(),
+    )
+
+    runner.run(tuple(cases.values()), selected)
+
+    payload = json.loads((output / "adversarial_results.json").read_text(encoding="utf-8"))
+    assert payload["provider"] == "nvidia"
+    assert payload["model"] == "nvidia/test-model"
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement", "missing"),
+    [
+        ("provider", None, True),
+        ("model", None, True),
+        ("corpus_version", None, True),
+        ("provider", "openai", False),
+        ("model", "nvidia/different-model", False),
+        ("corpus_version", "different-corpus", False),
+    ],
+)
+def test_adversarial_runner_rejects_summary_identity_before_output_or_execution(
+    field: str,
+    replacement: str | None,
+    missing: bool,
+    repository_root: Path,
+    attack_manifest: AttackManifest,
+    cases: dict[str, ManifestCase],
+    tmp_path: Path,
+) -> None:
+    selected = replace(
+        attack_manifest,
+        attacks=(_attack(attack_manifest, "ATK-LOG-001"),),
+    )
+    summary = tmp_path / "live" / "summary.json"
+    summary.parent.mkdir()
+    identity: dict[str, object] = {
+        "provider": "nvidia",
+        "model": "nvidia/test-model",
+        "corpus_version": selected.corpus_version,
+    }
+    if missing:
+        identity.pop(field)
+    else:
+        identity[field] = replacement
+    summary.write_text(json.dumps(identity), encoding="utf-8")
+    output = tmp_path / "must-not-exist"
+    executed = False
+
+    def execute(_fixture: Any) -> WorkflowRunEvidence:
+        nonlocal executed
+        executed = True
+        return _safe_run()
+
+    runner = AdversarialEvaluationRunner(
+        repository_root=repository_root,
+        output_dir=output,
+        settings=Settings(
+            data_dir=tmp_path / "data",
+            llm_provider="nvidia",
+            nvidia_api_key="nvapi-test-key",
+            nvidia_model="nvidia/test-model",
+        ),
+        execute_fixture=execute,
+        summary_path=summary,
+    )
+
+    with pytest.raises(SummaryIdentityError, match=field):
+        runner.run(tuple(cases.values()), selected)
+
+    assert executed is False
+    assert not output.exists()
+
+
+def test_adversarial_merge_revalidates_summary_identity_after_execution(
+    repository_root: Path,
+    attack_manifest: AttackManifest,
+    cases: dict[str, ManifestCase],
+    tmp_path: Path,
+) -> None:
+    selected = replace(
+        attack_manifest,
+        attacks=(_attack(attack_manifest, "ATK-LOG-001"),),
+    )
+    summary = tmp_path / "live" / "summary.json"
+    summary.parent.mkdir()
+    summary.write_text(
+        json.dumps(
+            {
+                "provider": "nvidia",
+                "model": "nvidia/test-model",
+                "corpus_version": selected.corpus_version,
+            }
+        ),
+        encoding="utf-8",
+    )
+    output = tmp_path / "adversarial-run"
+
+    def execute(_fixture: Any) -> WorkflowRunEvidence:
+        changed = json.loads(summary.read_text(encoding="utf-8"))
+        changed["model"] = "nvidia/changed-during-run"
+        summary.write_text(json.dumps(changed), encoding="utf-8")
+        return _safe_run()
+
+    runner = AdversarialEvaluationRunner(
+        repository_root=repository_root,
+        output_dir=output,
+        settings=Settings(
+            data_dir=tmp_path / "data",
+            llm_provider="nvidia",
+            nvidia_api_key="nvapi-test-key",
+            nvidia_model="nvidia/test-model",
+        ),
+        execute_fixture=execute,
+        summary_path=summary,
+    )
+
+    with pytest.raises(SummaryIdentityError, match="model"):
+        runner.run(tuple(cases.values()), selected)
+
+    assert (output / "adversarial_results.json").is_file()
+    persisted = json.loads(summary.read_text(encoding="utf-8"))
+    assert persisted["model"] == "nvidia/changed-during-run"
+    assert "attacks" not in persisted
+
+
+def test_adversarial_cli_never_defaults_fake_configuration_to_paid_openai(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    output = tmp_path / "must-not-exist"
+    monkeypatch.setenv("LLM_PROVIDER", "fake")
+    monkeypatch.setattr("evals.adversarial_runner._default_output", lambda _root: output)
+
+    with pytest.raises(SystemExit, match="2"):
+        adversarial_main([])
+
+    assert "--provider or set LLM_PROVIDER=openai or nvidia" in capsys.readouterr().err
+    assert not output.exists()
 
 
 def test_execution_error_fails_closed_and_still_writes_evidence(

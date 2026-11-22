@@ -3,8 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
+from data_incident_investigator.api import main as api_main
 from data_incident_investigator.api.main import create_app
 from data_incident_investigator.core.config import Settings
 
@@ -216,3 +218,53 @@ def test_investigation_rejects_missing_or_cross_case_artifacts(tmp_path: Path) -
             ).status_code
             == 422
         )
+
+
+def test_nvidia_provider_is_wired_with_zero_cost_accounting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, str] = {}
+
+    class StubNvidiaProvider:
+        def __init__(self, *, api_key: str, model: str, base_url: str) -> None:
+            captured.update(api_key=api_key, model=model, base_url=base_url)
+
+    monkeypatch.setattr(api_main, "NvidiaProvider", StubNvidiaProvider)
+    settings = Settings(
+        data_dir=tmp_path,
+        app_env="test",
+        llm_provider="nvidia",
+        nvidia_api_key="nvapi-test-key",
+        nvidia_model="nvidia/test-model",
+        nvidia_base_url="https://example.test/v1",
+    )
+
+    with TestClient(create_app(settings)) as client:
+        assert client.get("/api/ready").json() == {"status": "ready"}
+        usage = client.app.state.container.usage_ledger.snapshot()
+
+    assert captured == {
+        "api_key": "nvapi-test-key",
+        "model": "nvidia/test-model",
+        "base_url": "https://example.test/v1",
+    }
+    assert usage.estimated_cost_usd == 0
+
+
+def test_nvidia_provider_requires_api_key(tmp_path: Path) -> None:
+    settings = Settings(
+        data_dir=tmp_path,
+        app_env="test",
+        llm_provider="nvidia",
+        nvidia_api_key=None,
+    )
+
+    with (
+        pytest.raises(
+            RuntimeError,
+            match="NVIDIA_API_KEY is required when LLM_PROVIDER=nvidia",
+        ),
+        TestClient(create_app(settings)),
+    ):
+        pass

@@ -125,15 +125,32 @@ def test_freeze_writes_sanitized_hashed_evidence(tmp_path: Path) -> None:
     assert str(tmp_path) not in frozen_text
 
 
-def test_freeze_rejects_likely_secret_without_creating_output(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("secret", "message"),
+    [
+        (
+            "OPENAI_API_KEY=sk-proj-abcdefghijklmnopqrstuvwxyz123456",
+            "likely OpenAI API key",
+        ),
+        (
+            "NVIDIA_API_KEY=nvapi-abcdefghijklmnopqrstuvwxyz123456",
+            "likely NVIDIA API key",
+        ),
+    ],
+)
+def test_freeze_rejects_likely_secret_without_creating_output(
+    tmp_path: Path,
+    secret: str,
+    message: str,
+) -> None:
     live, adversarial = _write_runs(tmp_path)
     (live / "report.md").write_text(
-        "OPENAI_API_KEY=sk-proj-abcdefghijklmnopqrstuvwxyz123456\n",
+        f"{secret}\n",
         encoding="utf-8",
     )
     output = tmp_path / "submission/evaluation"
 
-    with pytest.raises(EvidenceFreezeError, match="likely OpenAI API key"):
+    with pytest.raises(EvidenceFreezeError, match=message):
         _freeze(tmp_path, live, adversarial, output)
 
     assert not output.exists()

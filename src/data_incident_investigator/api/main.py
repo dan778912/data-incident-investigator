@@ -33,6 +33,7 @@ from data_incident_investigator.evaluation import (
     default_results_root,
 )
 from data_incident_investigator.llm import (
+    NvidiaProvider,
     OpenAIProvider,
     RecordingProvider,
     StructuredModelProvider,
@@ -150,7 +151,39 @@ def create_app(
             )
             workflow_services = live_services.workflow
         else:
-            raise RuntimeError("the NVIDIA live provider adapter has not been configured")
+            if configured.nvidia_api_key is None:
+                raise RuntimeError("NVIDIA_API_KEY is required when LLM_PROVIDER=nvidia")
+            approval = HMACApprovalBindingService(
+                secret_key=approval_key,
+                ledger=approval_ledger,
+                clock=SystemClock(),
+            )
+            usage_ledger = UsageLedger(
+                input_cost_per_million=configured.nvidia_input_cost_per_million,
+                cached_input_cost_per_million=(configured.nvidia_cached_input_cost_per_million),
+                output_cost_per_million=configured.nvidia_output_cost_per_million,
+            )
+            provider = RecordingProvider(
+                cast(
+                    StructuredModelProvider,
+                    NvidiaProvider(
+                        api_key=configured.nvidia_api_key.get_secret_value(),
+                        model=configured.nvidia_model,
+                        base_url=configured.nvidia_base_url,
+                    ),
+                ),
+                usage_ledger,
+            )
+            live_services = build_live_services(
+                provider=provider,
+                application_database=configured.application_database,
+                retrieval_database=configured.retrieval_database,
+                data_root=configured.resolved_data_dir,
+                approval=approval,
+                max_rows=configured.max_dataset_rows,
+                max_patch_operations=configured.max_patch_operations,
+            )
+            workflow_services = live_services.workflow
         async with AsyncSqliteSaver.from_conn_string(
             str(configured.checkpoint_database)
         ) as checkpointer:

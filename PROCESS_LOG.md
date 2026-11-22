@@ -76,3 +76,14 @@ attacks. The final-build rerun could not be claimed: the provider returned HTTP
 429 after the account exhausted its API credit, so the fail-closed classifier
 marked all four outcomes unproven. I preserved that evidence and deferred the
 final freeze until the exact attacks can be rerun with available credit.
+
+That cost experience changed the release plan. I added NVIDIA Nemotron 3.5
+Lightning as a provider behind the same structured-model protocol, using the
+free hosted development endpoint rather than weakening the workflow. The
+adapter disables visible reasoning for complete JSON responses, embeds the
+strict schema in trusted instructions, rejects extra, missing, malformed, or
+truncated output, and records token usage at a configured zero API rate. The
+evaluation CLIs now require an explicit live provider and refuse to combine
+attack evidence unless provider, model, and corpus identities all match. This
+keeps the OpenAI result as an honest baseline while requiring a separate full
+qualification before Nemotron becomes the release evidence.

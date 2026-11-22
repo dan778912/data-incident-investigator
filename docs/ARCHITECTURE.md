@@ -69,7 +69,7 @@ src/data_incident_investigator/
   remediation/     Typed DSL, preview, execution, post-fix validation
   security/        Upload checks, path confinement, redaction, tool policy
   persistence/     SQLite repositories and migrations
-  llm/             Provider protocol, OpenAI adapter, deterministic fake
+  llm/             Provider protocol, NVIDIA/OpenAI adapters, deterministic fake
   llm/usage.py     In-memory model-call token and estimated-cost ledger
 ```
 

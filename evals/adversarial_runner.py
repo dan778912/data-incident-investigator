@@ -34,7 +34,9 @@ from .live_runner import (
     FixtureDefinition,
     LiveEvaluationRunner,
     _evaluation_client,
+    live_model_name,
     load_fixture,
+    select_live_provider,
 )
 
 type InsertionMode = Literal[
@@ -86,6 +88,10 @@ class AttackManifestError(ValueError):
     """Raised when the adversarial manifest is invalid or unsafe to stage."""
 
 
+class SummaryIdentityError(ValueError):
+    """Raised when adversarial evidence targets a different live release identity."""
+
+
 @dataclass(frozen=True, slots=True)
 class AttackDefinition:
     attack_id: str
@@ -108,6 +114,13 @@ class AttackManifest:
     attacks: tuple[AttackDefinition, ...]
     reporting_requirements: tuple[str, ...]
     outcome_classifications: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationIdentity:
+    provider: str
+    model: str
+    corpus_version: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -351,6 +364,10 @@ class AdversarialEvaluationRunner:
         )
         if missing:
             raise AttackManifestError(f"attack fixtures are absent from the manifest: {missing}")
+        expected_identity: EvaluationIdentity | None = None
+        if self._summary_path is not None and self._settings is not None:
+            expected_identity = _evaluation_identity(self._settings, attack_manifest)
+            _validate_summary_identity(self._summary_path, expected_identity)
         self._output_dir.mkdir(parents=True, exist_ok=False)
         canary_value = f"DII_ADVERSARIAL_CANARY_{uuid4().hex}"
         with _temporary_environment(attack_manifest.canary_identifier, canary_value):
@@ -376,7 +393,12 @@ class AdversarialEvaluationRunner:
                     )
         self._write_outputs(attack_manifest, canary_value, results)
         if self._summary_path is not None:
-            _merge_attacks_into_summary(self._summary_path, self._output_dir, results)
+            _merge_attacks_into_summary(
+                self._summary_path,
+                self._output_dir,
+                results,
+                expected_identity=expected_identity,
+            )
         return results
 
     def _execute_attacks(
@@ -429,7 +451,7 @@ class AdversarialEvaluationRunner:
             "corpus_version": manifest.corpus_version,
             "generated_at": generated_at,
             "provider": self._settings.llm_provider if self._settings else "injected-executor",
-            "model": self._settings.openai_model if self._settings else "test-double",
+            "model": live_model_name(self._settings) if self._settings else "test-double",
             "canary_identifier": manifest.canary_identifier,
             "canary_value_sha256": _sha256(canary_value.encode("utf-8")),
             "canary_value_is_synthetic": True,
@@ -1133,14 +1155,14 @@ def _merge_attacks_into_summary(
     summary_path: Path,
     adversarial_output: Path,
     results: Sequence[AttackResult],
+    *,
+    expected_identity: EvaluationIdentity | None = None,
 ) -> None:
     """Attach executed attack records to a specific live-suite summary for the UI."""
 
-    if not summary_path.is_file():
-        raise FileNotFoundError(f"live evaluation summary does not exist: {summary_path}")
-    payload = json.loads(summary_path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError("live evaluation summary must contain a JSON object")
+    payload = _read_summary(summary_path)
+    if expected_identity is not None:
+        _validate_summary_identity(summary_path, expected_identity, payload=payload)
     payload["attacks"] = [item.frontend_record() for item in results]
     payload["adversarial_counts"] = {
         "executed": len(results),
@@ -1161,6 +1183,48 @@ def _merge_attacks_into_summary(
         encoding="utf-8",
     )
     temporary.replace(summary_path)
+
+
+def _evaluation_identity(settings: Settings, manifest: AttackManifest) -> EvaluationIdentity:
+    return EvaluationIdentity(
+        provider=settings.llm_provider,
+        model=live_model_name(settings),
+        corpus_version=manifest.corpus_version,
+    )
+
+
+def _read_summary(summary_path: Path) -> dict[str, object]:
+    if not summary_path.is_file():
+        raise FileNotFoundError(f"live evaluation summary does not exist: {summary_path}")
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("live evaluation summary must contain a JSON object")
+    return cast(dict[str, object], payload)
+
+
+def _validate_summary_identity(
+    summary_path: Path,
+    expected: EvaluationIdentity,
+    *,
+    payload: Mapping[str, object] | None = None,
+) -> None:
+    summary = payload if payload is not None else _read_summary(summary_path)
+    expected_fields = {
+        "provider": expected.provider,
+        "model": expected.model,
+        "corpus_version": expected.corpus_version,
+    }
+    for field, expected_value in expected_fields.items():
+        actual = summary.get(field)
+        if not isinstance(actual, str) or not actual.strip():
+            raise SummaryIdentityError(
+                f"live evaluation summary is missing release identity field: {field}"
+            )
+        if actual != expected_value:
+            raise SummaryIdentityError(
+                "live evaluation summary identity mismatch for "
+                f"{field}: expected {expected_value!r}, found {actual!r}"
+            )
 
 
 def _update_prompt_injection_metric(
@@ -1202,6 +1266,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Live-suite summary.json to enrich with executed attack records",
     )
     parser.add_argument("--attack", action="append", default=[])
+    parser.add_argument(
+        "--provider",
+        choices=("openai", "nvidia"),
+        help="Live provider to evaluate; otherwise LLM_PROVIDER must be openai or nvidia",
+    )
     parser.add_argument("--fail-fast", action="store_true")
     args = parser.parse_args(argv)
 
@@ -1224,11 +1293,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     output = (args.output or _default_output(repository_root)).resolve()
     base = Settings()
+    try:
+        provider = select_live_provider(base.llm_provider, args.provider)
+    except ValueError as exc:
+        parser.error(str(exc))
     settings = base.model_copy(
         update={
             "app_env": "test",
             "data_dir": output / "runtime",
-            "llm_provider": "openai",
+            "llm_provider": provider,
         }
     )
     runner = AdversarialEvaluationRunner(
