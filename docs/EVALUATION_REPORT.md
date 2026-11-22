@@ -9,7 +9,7 @@
 
 | Field | Value |
 |---|---|
-| Source revision | Working tree based on `42118df`; the freeze manifest records the final release commit |
+| Evaluated source commit | `e3d9c880d0093dbaae32baff0d2d94e1c877ee09` (also recorded in the freeze manifest) |
 | Live run | `evals/results/2026-11-22T024013Z` |
 | Adversarial run | `evals/results/2026-11-22T024558Z-adversarial` |
 | Evaluation date | 2026-11-21 Pacific / 2026-11-22 UTC |
