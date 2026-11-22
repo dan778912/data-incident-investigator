@@ -469,10 +469,30 @@ def test_live_reasoning_converts_typed_diagnostic_and_rejects_unknown_root_cause
         "tool": "check_type_conformance",
     }
     assert provider.calls[0]["schema"] is HypothesesDraft
-    assert "untrusted" in provider.calls[0]["instructions"].lower()
+    hypothesis_instructions = provider.calls[0]["instructions"].lower()
+    assert "untrusted" in hypothesis_instructions
+    assert "upstream_replay_duplicates" in hypothesis_instructions
+    assert "duplicate_keys_after_replay" in hypothesis_instructions
+    assert "observable cause-code level" in hypothesis_instructions
 
+    verification_evidence = [
+        {
+            "evidence_id": "artifact-metadata",
+            "source": "dataset",
+            "excerpt": "Validated dataset metadata.",
+            "relevance_score": 1.0,
+        }
+    ]
     with pytest.raises(ValueError, match="unknown root-cause"):
-        service.verify_hypotheses(hypotheses=hypotheses, diagnostics=[], revision=0)
+        service.verify_hypotheses(
+            hypotheses=hypotheses,
+            evidence=verification_evidence,
+            diagnostics=[],
+            revision=0,
+        )
+    verification_payload = json.loads(provider.calls[1]["user_input"])
+    assert verification_payload["untrusted_evidence"] == verification_evidence
+    assert "incidental hidden runtime setting" in provider.calls[1]["instructions"].lower()
 
 
 def test_model_facing_schemas_use_openai_supported_strict_subset() -> None:
@@ -501,7 +521,12 @@ def test_model_facing_schemas_use_openai_supported_strict_subset() -> None:
         schema = to_strict_json_schema(model)
         assert_supported(schema)
     assert "anyOf" in json.dumps(to_strict_json_schema(HypothesesDraft), sort_keys=True)
-    assert "anyOf" in json.dumps(to_strict_json_schema(RemediationDraft), sort_keys=True)
+    remediation_schema = to_strict_json_schema(RemediationDraft)
+    assert "anyOf" in json.dumps(remediation_schema, sort_keys=True)
+    assert remediation_schema["$defs"]["CanonicalDatetimeFormat"]["enum"] == [
+        "rfc3339",
+        "MM/DD/YYYY hh:mm AM UTC",
+    ]
 
 
 def test_type_conformance_draft_rejects_duplicate_or_wildcard_columns() -> None:
@@ -535,6 +560,17 @@ def test_live_diagnostics_enforce_allowlist_and_selected_artifact_boundary(
         filename="selected.csv",
         content="id,value\n1,\n2,5\n",
     )
+    selected_log = _artifact(
+        repository=repository,
+        resolver=resolver,
+        case_id=selected_case.case_id,
+        kind=ArtifactKind.LOG,
+        filename="pipeline.log",
+        content=(
+            "ERROR schema_validation missing=customer_id observed=customerId "
+            "api_key=supersecretvalue\n"
+        ),
+    )
     foreign = _artifact(
         repository=repository,
         resolver=resolver,
@@ -547,7 +583,7 @@ def test_live_diagnostics_enforce_allowlist_and_selected_artifact_boundary(
         ArtifactCatalog(database_path, data_root),
         DiagnosticEngine(PolicyGateway()),
     )
-    allowed_ids = [str(selected.artifact_id)]
+    allowed_ids = [str(selected.artifact_id), str(selected_log.artifact_id)]
 
     result = service.run(
         hypotheses=[
@@ -583,6 +619,33 @@ def test_live_diagnostics_enforce_allowlist_and_selected_artifact_boundary(
         "<EMPTY>": 1,
     }
     assert "sample" not in raw_signal["metrics"]
+
+    log_result = service.run(
+        hypotheses=[
+            _hypothesis(
+                selected_log.artifact_id,
+                tool=DiagnosticTool.INSPECT_LOG_SIGNATURES.value,
+                arguments={"signatures": ["missing=customer_id", "customerId"]},
+            )
+        ],
+        artifact_ids=allowed_ids,
+    )
+    log_signal = json.loads(log_result[0]["observed_signal"])
+    assert log_result[0]["supports_hypothesis"] is True
+    assert log_signal["metrics"]["signature_counts"] == {
+        "customerId": 1,
+        "missing=customer_id": 1,
+    }
+    assert log_signal["metrics"]["matching_lines"] == [
+        {
+            "line_number": 1,
+            "text": (
+                "ERROR schema_validation missing=customer_id observed=customerId "
+                "[REDACTED:assigned_secret]"
+            ),
+        }
+    ]
+    assert "supersecretvalue" not in log_result[0]["observed_signal"]
 
     with pytest.raises(ValueError, match="outside the case"):
         service.run(

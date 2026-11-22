@@ -121,7 +121,7 @@ Runbooks, schema descriptions, and other case documents are chunked, assigned st
 4. Stop when coverage is sufficient, or refine the query and repeat.
 5. Preserve source and chunk identifiers for final citations.
 
-Retrieved text is untrusted data. It can inform a hypothesis, but it cannot directly choose or invoke a tool. Only a typed workflow decision that passes the tool gateway can request a diagnostic operation.
+Retrieved text is untrusted data. It can inform a hypothesis and is available again when verification compares cited evidence with diagnostic observations, but it cannot directly choose or invoke a tool. Only a typed workflow decision that passes the tool gateway can request a diagnostic operation.
 
 ## Diagnostic Tool Gateway
 
@@ -131,10 +131,10 @@ The initial read-only registry contains:
 - Null-ratio checks with explicit missing-value semantics.
 - Duplicate-key checks.
 - Type-conformance checks.
-- Datetime parsing checks.
-- Log-signature extraction.
+- Datetime parsing checks that honor the declared canonical formats.
+- Log-signature extraction with bounded, redacted matching-line context.
 
-Each tool has a Pydantic argument model, bounded row/text reads, and a case-scoped artifact resolver. The gateway rejects unknown tools, unexpected arguments, artifacts outside the current case, and requests that exceed those bounds. The model never receives an operating-system path and never directly accesses the filesystem. Per-tool wall-clock timeouts are not implemented in this release; diagnostics operate only on locally uploaded artifacts and the workflow itself has bounded loops.
+Each tool has a Pydantic argument model, bounded row/text reads, and a case-scoped artifact resolver. Matching-log evidence is deduplicated and limited to ten lines of at most 500 characters, with credential-pattern redaction before it enters model-visible observations. Datetime diagnostics use stable format identifiers rather than model-authored parser strings. The gateway rejects unknown tools, unexpected arguments, artifacts outside the current case, and requests that exceed those bounds. The model never receives an operating-system path and never directly accesses the filesystem. Per-tool wall-clock timeouts are not implemented in this release; diagnostics operate only on locally uploaded artifacts and the workflow itself has bounded loops.
 
 ## Safe Remediation Boundary
 
@@ -148,7 +148,7 @@ Remediations use a discriminated union rather than free-form code. The supported
 - `normalize_string`
 - `replace_values`
 
-A remediation plan contains the source artifact ID and SHA-256 hash, ordered typed operations, expected effects, required validations, rationale, citations, and a stable plan hash.
+A remediation plan contains the source artifact ID and SHA-256 hash, ordered typed operations, expected effects, required validations, rationale, citations, and a stable plan hash. Datetime operations accept only the canonical `rfc3339` and `MM/DD/YYYY hh:mm AM UTC` identifiers, enforce UTC output, and fail or coerce according to the declared policy; string normalization uses NFKC.
 
 The executor enforces the following invariants:
 
@@ -223,7 +223,7 @@ Safety is layered across the real attack surfaces:
 - Loop, row/text-read, upload-size, and remediation-operation limits. Provider-side rate limits are surfaced as call failures; this release does not implement an application rate limiter or per-tool wall-clock timeout.
 - Structured, sanitized, append-only audit events.
 
-At least three prompt-injection attacks will be executed against different surfaces: a log file, a retrieved runbook, and dataset cell content. The system will preserve the injected text, actual trace, outcome, and mitigation evidence.
+Four prompt-injection attacks execute against a log file, a retrieved runbook, dataset cell content, and an uploaded schema description. The system preserves the injected text, actual trace, outcome, and mitigation evidence.
 
 ## Observability and Evaluation Hooks
 

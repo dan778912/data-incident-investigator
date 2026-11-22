@@ -98,15 +98,22 @@ def test_executor_applies_typed_plan_to_working_copy_only(tmp_path: Path) -> Non
 def test_executor_casts_and_parses_datetime(tmp_path: Path) -> None:
     source = tmp_path / "source.json"
     source.write_text(
-        '[{"count":"1","when":"2026-11-21 10:00:00"},{"count":"2","when":"2026-11-21T11:00:00Z"}]',
+        '[{"count":"1","when":"2026-11-21T10:00:00Z"},'
+        '{"count":"2","when":"11/21/2026 11:00 AM UTC"}]',
         encoding="utf-8",
     )
+    parse_datetime = ParseDatetime(
+        column="when",
+        accepted_formats=["MM/DD/YYYY hh:mm AM UTC", "rfc3339"],
+        timezone="UTC",
+    )
+    assert parse_datetime.accepted_formats == ["rfc3339", "MM/DD/YYYY hh:mm AM UTC"]
     plan = RemediationPlan(
         source_artifact_id=uuid4(),
         source_sha256=_sha256(source),
         operations=[
             CastColumn(column="count", target_type="integer"),
-            ParseDatetime(column="when", accepted_formats=["mixed"], timezone="UTC"),
+            parse_datetime,
         ],
         expected_effects=["types conform"],
         required_post_checks=["check_type_conformance"],
@@ -123,7 +130,83 @@ def test_executor_casts_and_parses_datetime(tmp_path: Path) -> None:
     )
 
     assert result.rows_after == 2
-    assert "2026-11-21T10:00:00" in output.read_text(encoding="utf-8")
+    output_text = output.read_text(encoding="utf-8")
+    assert "2026-11-21T10:00:00" in output_text
+    assert "2026-11-21T11:00:00" in output_text
+
+
+def test_datetime_operation_rejects_arbitrary_or_duplicate_format_tokens() -> None:
+    with pytest.raises(ValidationError):
+        ParseDatetime(column="when", accepted_formats=["%Y-%m-%dT%H:%M:%SZ"])
+    with pytest.raises(ValidationError, match="unique"):
+        ParseDatetime(column="when", accepted_formats=["rfc3339", "rfc3339"])
+    with pytest.raises(ValidationError):
+        ParseDatetime(column="when", accepted_formats=["rfc3339"], timezone="US/Pacific")
+
+
+def test_string_normalization_uses_the_canonical_compatibility_form() -> None:
+    assert NormalizeString(columns=["sku"]).unicode_form == "NFKC"
+    with pytest.raises(ValidationError):
+        NormalizeString(columns=["sku"], unicode_form="NFC")
+
+
+def test_datetime_operation_rejects_value_outside_declared_formats(tmp_path: Path) -> None:
+    source = tmp_path / "source.json"
+    source.write_text('[{"when":"2026-11-21 10:00:00"}]', encoding="utf-8")
+    original = source.read_bytes()
+    plan = RemediationPlan(
+        source_artifact_id=uuid4(),
+        source_sha256=_sha256(source),
+        operations=[ParseDatetime(column="when", accepted_formats=["rfc3339"])],
+        expected_effects=["timestamps use the declared contract"],
+        required_post_checks=["check_datetime_parse"],
+        citation_ids=["runbook#datetime-contract"],
+        rationale="Reject timestamps outside the declared format.",
+    )
+    output = tmp_path / "rejected.json"
+
+    with pytest.raises(ValueError, match="declared datetime formats"):
+        RemediationExecutor(PolicyGateway()).apply(
+            plan=plan,
+            approval=_approval(plan),
+            trusted_source_path=source,
+            trusted_output_path=output,
+        )
+
+    assert source.read_bytes() == original
+    assert not output.exists()
+
+
+def test_datetime_operation_coerces_value_outside_declared_formats(tmp_path: Path) -> None:
+    source = tmp_path / "source.json"
+    source.write_text('[{"when":"2026-11-21 10:00:00"}]', encoding="utf-8")
+    plan = RemediationPlan(
+        source_artifact_id=uuid4(),
+        source_sha256=_sha256(source),
+        operations=[
+            ParseDatetime(
+                column="when",
+                accepted_formats=["rfc3339"],
+                on_error="coerce_null",
+            )
+        ],
+        expected_effects=["out-of-contract timestamps become null on the working copy"],
+        required_post_checks=["check_datetime_parse"],
+        citation_ids=["runbook#datetime-contract"],
+        rationale="Coerce only values outside the declared format.",
+    )
+    output = tmp_path / "coerced.json"
+
+    result = RemediationExecutor(PolicyGateway()).apply(
+        plan=plan,
+        approval=_approval(plan),
+        trusted_source_path=source,
+        trusted_output_path=output,
+    )
+
+    assert result.rows_after == 1
+    assert '"when":null' in output.read_text(encoding="utf-8").replace(" ", "")
+    assert all(check.passed for check in result.checks)
 
 
 def test_executor_fails_closed_without_approval_or_matching_source(tmp_path: Path) -> None:

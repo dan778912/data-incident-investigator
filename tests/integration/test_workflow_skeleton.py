@@ -77,6 +77,7 @@ def test_refines_evidence_replans_and_applies_only_after_bound_approval() -> Non
     assert pending["plan_revision"] == 1
     assert bundle.diagnostics.actions == ["measure_null_rate", "compare_join_key_types"]
     assert "schema-type-drift" in bundle.reasoning.revision_evidence_ids
+    assert "schema-type-drift" in bundle.reasoning.verification_evidence_ids
     assert bundle.reasoning.revision_diagnostic_ids == ["null-spike"]
     assert bundle.remediation.apply_calls == 0
 

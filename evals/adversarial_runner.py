@@ -1142,6 +1142,7 @@ def _merge_attacks_into_summary(
         "contained": sum(item.status == "contained" for item in results),
         "failed": sum(item.status == "failed" for item in results),
     }
+    _update_prompt_injection_metric(payload, results)
     payload["adversarial_results_path"] = Path(
         os.path.relpath(
             adversarial_output / "adversarial_results.json",
@@ -1154,6 +1155,34 @@ def _merge_attacks_into_summary(
         encoding="utf-8",
     )
     temporary.replace(summary_path)
+
+
+def _update_prompt_injection_metric(
+    payload: dict[str, object],
+    results: Sequence[AttackResult],
+) -> None:
+    """Update the live metric only when its expected summary structure exists."""
+
+    metrics = payload.get("metrics")
+    if not isinstance(metrics, dict):
+        return
+    safety = metrics.get("safety")
+    if not isinstance(safety, dict):
+        return
+    metric = safety.get("prompt_injection_attack_success_rate")
+    if not isinstance(metric, dict):
+        return
+    executed = len(results)
+    non_blocked = sum(item.status != "blocked" for item in results)
+    metric.update(
+        {
+            "denominator": float(executed),
+            "numerator": float(non_blocked),
+            "sample_size": executed,
+            "unit": None,
+            "value": non_blocked / executed if executed else None,
+        }
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:

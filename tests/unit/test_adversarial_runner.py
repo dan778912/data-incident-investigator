@@ -16,6 +16,7 @@ from evals.adversarial_runner import (
     AttackManifestError,
     StagedAttack,
     WorkflowRunEvidence,
+    _merge_attacks_into_summary,
     classify_attack,
     load_attack_manifest,
     stage_attack,
@@ -246,7 +247,23 @@ def test_runner_writes_frontend_records_complete_trace_and_report_metadata(
     live_summary = tmp_path / "live-run" / "summary.json"
     live_summary.parent.mkdir()
     live_summary.write_text(
-        json.dumps({"sample_size": 20, "attacks": []}),
+        json.dumps(
+            {
+                "sample_size": 20,
+                "attacks": [],
+                "metrics": {
+                    "safety": {
+                        "prompt_injection_attack_success_rate": {
+                            "denominator": 0.0,
+                            "numerator": 0.0,
+                            "sample_size": 0,
+                            "unit": None,
+                            "value": None,
+                        }
+                    }
+                },
+            }
+        ),
         encoding="utf-8",
     )
     seen_canary: list[str] = []
@@ -289,6 +306,80 @@ def test_runner_writes_frontend_records_complete_trace_and_report_metadata(
         "contained": 0,
         "failed": 0,
     }
+    assert merged["metrics"]["safety"]["prompt_injection_attack_success_rate"] == {
+        "denominator": 1.0,
+        "numerator": 0.0,
+        "sample_size": 1,
+        "unit": None,
+        "value": 0.0,
+    }
+
+
+def test_summary_metric_counts_contained_result_as_non_blocked(
+    repository_root: Path,
+    attack_manifest: AttackManifest,
+    cases: dict[str, ManifestCase],
+    tmp_path: Path,
+) -> None:
+    staged = _stage(repository_root, attack_manifest, cases, "ATK-SCHEMA-004", tmp_path)
+    state = _safe_state()
+    state["remediation"] = {"citation_ids": []}
+    contained = classify_attack(
+        staged,
+        WorkflowRunEvidence(
+            run_id="run-contained",
+            state=state,
+            error=None,
+            original_hash_unchanged=True,
+            preapproval_mutations=0,
+        ),
+        canary_value="synthetic-canary-value",
+        frozen_fixture_unchanged=True,
+        trace_path=tmp_path / "trace.json",
+    )
+    summary = tmp_path / "summary.json"
+    summary.write_text(
+        json.dumps(
+            {
+                "metrics": {
+                    "safety": {
+                        "prompt_injection_attack_success_rate": {
+                            "denominator": 0.0,
+                            "numerator": 0.0,
+                            "sample_size": 0,
+                            "unit": None,
+                            "value": None,
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    _merge_attacks_into_summary(summary, tmp_path / "adversarial", [contained])
+
+    merged = json.loads(summary.read_text(encoding="utf-8"))
+    assert merged["metrics"]["safety"]["prompt_injection_attack_success_rate"] == {
+        "denominator": 1.0,
+        "numerator": 1.0,
+        "sample_size": 1,
+        "unit": None,
+        "value": 1.0,
+    }
+
+    summary_without_metric = tmp_path / "summary-without-metric.json"
+    summary_without_metric.write_text(
+        json.dumps({"metrics": {"diagnosis": {"preserved": True}}}),
+        encoding="utf-8",
+    )
+    _merge_attacks_into_summary(
+        summary_without_metric,
+        tmp_path / "adversarial",
+        [contained],
+    )
+    unstructured = json.loads(summary_without_metric.read_text(encoding="utf-8"))
+    assert unstructured["metrics"] == {"diagnosis": {"preserved": True}}
 
 
 def test_execution_error_fails_closed_and_still_writes_evidence(

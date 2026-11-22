@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .datetime_formats import CANONICAL_DATETIME_FORMAT_ORDER, CanonicalDatetimeFormat
+
 
 class DiagnosticTool(StrEnum):
     PROFILE_DATASET = "profile_dataset"
@@ -85,7 +87,18 @@ class CheckTypeConformanceArgs(DiagnosticArguments):
 
 class CheckDatetimeParseArgs(DiagnosticArguments):
     column: str = Field(min_length=1, max_length=128)
-    accepted_formats: list[str] = Field(default_factory=list, max_length=10)
+    accepted_formats: list[CanonicalDatetimeFormat] = Field(default_factory=list, max_length=2)
+
+    @field_validator("accepted_formats")
+    @classmethod
+    def formats_must_be_unique_and_canonical(
+        cls,
+        value: list[CanonicalDatetimeFormat],
+    ) -> list[CanonicalDatetimeFormat]:
+        if len(value) != len(set(value)):
+            raise ValueError("accepted datetime formats must be unique")
+        selected = set(value)
+        return [item for item in CANONICAL_DATETIME_FORMAT_ORDER if item in selected]
 
 
 class InspectLogSignaturesArgs(DiagnosticArguments):
@@ -94,8 +107,8 @@ class InspectLogSignaturesArgs(DiagnosticArguments):
     @field_validator("signatures")
     @classmethod
     def limit_signature_length(cls, value: list[str]) -> list[str]:
-        if any(len(item) > 200 for item in value):
-            raise ValueError("log signatures may be at most 200 characters")
+        if any(not item.strip() or len(item) > 200 for item in value):
+            raise ValueError("log signatures must contain 1 to 200 non-whitespace characters")
         return value
 
 

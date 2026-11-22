@@ -6,6 +6,11 @@ from typing import Any
 import pandas as pd
 from pydantic import BaseModel
 
+from data_incident_investigator.domain.datetime_formats import (
+    PANDAS_DATETIME_FORMATS,
+    RFC3339_PATTERN,
+    CanonicalDatetimeFormat,
+)
 from data_incident_investigator.domain.diagnostics import (
     CheckDatetimeParseArgs,
     CheckDuplicateKeysArgs,
@@ -18,6 +23,10 @@ from data_incident_investigator.domain.diagnostics import (
     ProfileDatasetArgs,
 )
 from data_incident_investigator.security.policy import PolicyGateway
+from data_incident_investigator.security.redaction import redact_secrets
+
+_MAX_LOG_MATCHING_LINES = 10
+_MAX_LOG_LINE_LENGTH = 500
 
 
 class DiagnosticExecutionError(RuntimeError):
@@ -156,13 +165,35 @@ class DiagnosticEngine:
             assert isinstance(arguments, CheckDatetimeParseArgs)
             self._require_columns(frame, [arguments.column])
             series = frame[arguments.column]
-            parsed = pd.to_datetime(series, errors="coerce", utc=True, format="mixed")
-            failures = int((series.notna() & parsed.isna()).sum())
+            non_null = series.notna()
+            parsed_by_format: dict[str, pd.Series[Any]]
+            if arguments.accepted_formats:
+                parsed_by_format = {
+                    format_name: self._parse_datetime_format(series, format_name)
+                    for format_name in arguments.accepted_formats
+                }
+            else:
+                parsed_by_format = {
+                    "mixed": pd.to_datetime(series, errors="coerce", utc=True, format="mixed")
+                }
+            successes = pd.Series(False, index=series.index, dtype=bool)
+            format_results: dict[str, dict[str, int]] = {}
+            for format_name, parsed in parsed_by_format.items():
+                matched = non_null & parsed.notna()
+                successes |= matched
+                format_results[format_name] = {
+                    "parse_success_count": int(matched.sum()),
+                    "parse_failure_count": int((non_null & parsed.isna()).sum()),
+                }
+            non_null_count = int(non_null.sum())
+            failures = int((non_null & ~successes).sum())
             return (
                 {
                     "column": arguments.column,
+                    "accepted_formats": arguments.accepted_formats,
+                    "format_results": format_results,
                     "parse_failure_count": failures,
-                    "parse_success_rate": float(1 - failures / max(int(series.notna().sum()), 1)),
+                    "parse_success_rate": float(1 - failures / max(non_null_count, 1)),
                 },
                 f"Found {failures} non-null values that could not be parsed as datetimes.",
                 [],
@@ -188,13 +219,63 @@ class DiagnosticEngine:
         lowered = text.casefold()
         counts = {signature: lowered.count(signature.casefold()) for signature in signatures}
         matched = {signature: count for signature, count in counts.items() if count}
-        return matched, f"Matched {len(matched)} configured log signatures.", []
+        folded_signatures = tuple(signature.casefold() for signature in signatures)
+        matching_lines: list[dict[str, int | str]] = []
+        seen_lines: set[str] = set()
+        truncated = False
+        redacted_any = False
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            folded_line = line.casefold()
+            if not any(signature in folded_line for signature in folded_signatures):
+                continue
+            clean_line, redactions = redact_secrets(line)
+            redacted_any = redacted_any or bool(redactions)
+            bounded_line = clean_line[:_MAX_LOG_LINE_LENGTH]
+            if bounded_line in seen_lines:
+                continue
+            seen_lines.add(bounded_line)
+            if len(matching_lines) >= _MAX_LOG_MATCHING_LINES:
+                truncated = True
+                break
+            matching_lines.append({"line_number": line_number, "text": bounded_line})
+        metrics: dict[str, Any] = {
+            "signature_counts": matched,
+            "matching_lines": matching_lines,
+            "matching_lines_truncated": truncated,
+        }
+        warnings: list[str] = []
+        if truncated:
+            warnings.append("Matching log context was truncated to the safe line limit.")
+        if redacted_any:
+            warnings.append("Credential-like text was redacted from matching log context.")
+        return (
+            metrics,
+            f"Matched {len(matched)} configured signatures across "
+            f"{len(matching_lines)} bounded log lines.",
+            warnings,
+        )
 
     @staticmethod
     def _require_columns(frame: pd.DataFrame, columns: list[str]) -> None:
         missing = [column for column in columns if column not in frame.columns]
         if missing:
             raise KeyError(f"unknown columns: {missing}")
+
+    @staticmethod
+    def _parse_datetime_format(
+        series: pd.Series[Any],
+        format_name: CanonicalDatetimeFormat,
+    ) -> pd.Series[Any]:
+        source = series
+        if format_name == "rfc3339":
+            eligible = series.astype("string").str.fullmatch(RFC3339_PATTERN, na=False)
+            source = series.where(eligible)
+        return pd.to_datetime(
+            source,
+            errors="coerce",
+            utc=True,
+            format=PANDAS_DATETIME_FORMATS[format_name],
+        )
 
     @staticmethod
     def _normalized_dtype(series: pd.Series[Any]) -> str:

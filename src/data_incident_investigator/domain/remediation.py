@@ -10,6 +10,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from .datetime_formats import CANONICAL_DATETIME_FORMAT_ORDER, CanonicalDatetimeFormat
+
 _COLUMN_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_. -]{0,127}$")
 
 
@@ -66,11 +68,22 @@ class DropDuplicates(BaseModel):
 class ParseDatetime(BaseModel):
     op: Literal["parse_datetime"] = "parse_datetime"
     column: str
-    accepted_formats: list[str] = Field(min_length=1, max_length=10)
-    timezone: str = Field(default="UTC", max_length=64)
+    accepted_formats: list[CanonicalDatetimeFormat] = Field(min_length=1, max_length=2)
+    timezone: Literal["UTC"] = "UTC"
     on_error: Literal["reject", "coerce_null"] = "reject"
 
     _validate_name = field_validator("column")(_validate_column)
+
+    @field_validator("accepted_formats")
+    @classmethod
+    def formats_are_unique_and_canonical(
+        cls,
+        value: list[CanonicalDatetimeFormat],
+    ) -> list[CanonicalDatetimeFormat]:
+        if len(value) != len(set(value)):
+            raise ValueError("accepted datetime formats must be unique")
+        selected = set(value)
+        return [item for item in CANONICAL_DATETIME_FORMAT_ORDER if item in selected]
 
 
 class NormalizeString(BaseModel):
@@ -78,7 +91,7 @@ class NormalizeString(BaseModel):
     columns: list[str] = Field(min_length=1, max_length=20)
     trim: bool = True
     casefold: bool = False
-    unicode_form: Literal["NFC", "NFKC"] = "NFKC"
+    unicode_form: Literal["NFKC"] = "NFKC"
 
     @field_validator("columns")
     @classmethod

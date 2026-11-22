@@ -92,6 +92,7 @@ class DemoRetrievalService:
 class DemoReasoningService:
     revision_evidence_ids: list[str] = field(default_factory=list)
     revision_diagnostic_ids: list[str] = field(default_factory=list)
+    verification_evidence_ids: list[str] = field(default_factory=list)
 
     def initial_query(self, *, incident_summary: str, artifact_ids: list[str]) -> str:
         return "orders join row loss null customer_id"
@@ -158,9 +159,11 @@ class DemoReasoningService:
         self,
         *,
         hypotheses: list[HypothesisRecord],
+        evidence: list[EvidenceRecord],
         diagnostics: list[DiagnosticRecord],
         revision: int,
     ) -> VerificationRecord:
+        self.verification_evidence_ids = [item["evidence_id"] for item in evidence]
         current_id = hypotheses[0]["hypothesis_id"]
         current_results = [item for item in diagnostics if item["hypothesis_id"] == current_id]
         confirmed = bool(current_results and current_results[-1]["supports_hypothesis"])

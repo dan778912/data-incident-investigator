@@ -7,7 +7,7 @@ import pytest
 
 from data_incident_investigator.diagnostics.engine import DiagnosticEngine
 from data_incident_investigator.domain.diagnostics import DiagnosticRequest, DiagnosticTool
-from data_incident_investigator.security.policy import PolicyGateway
+from data_incident_investigator.security.policy import PolicyGateway, PolicyViolation
 
 
 @pytest.fixture
@@ -79,6 +79,89 @@ def test_profile_and_quality_diagnostics(dataset: Path, artifact_id: UUID) -> No
     assert duplicates.metrics["duplicate_row_count"] == 2
     assert types.metrics["mismatches"]["value"]["actual"] == "float"
     assert datetimes.metrics["parse_failure_count"] == 1
+    assert datetimes.metrics["format_results"]["mixed"] == {
+        "parse_success_count": 2,
+        "parse_failure_count": 1,
+    }
+
+
+def test_datetime_diagnostic_honors_declared_canonical_formats(
+    tmp_path: Path,
+    artifact_id: UUID,
+) -> None:
+    dataset = tmp_path / "timestamps.csv"
+    dataset.write_text(
+        "id,created_at\n"
+        "1,2026-11-21T10:00:00Z\n"
+        "2,2026-11-20T23:50:00-08:00\n"
+        "3,11/21/2026 10:05 AM UTC\n"
+        "4,2026-11-21\n",
+        encoding="utf-8",
+    )
+    engine = DiagnosticEngine(PolicyGateway())
+
+    rfc3339 = engine.run(
+        _request(
+            DiagnosticTool.CHECK_DATETIME_PARSE,
+            artifact_id,
+            {"column": "created_at", "accepted_formats": ["rfc3339"]},
+        ),
+        dataset,
+    )
+    both = engine.run(
+        _request(
+            DiagnosticTool.CHECK_DATETIME_PARSE,
+            artifact_id,
+            {
+                "column": "created_at",
+                "accepted_formats": [
+                    "MM/DD/YYYY hh:mm AM UTC",
+                    "rfc3339",
+                ],
+            },
+        ),
+        dataset,
+    )
+
+    assert rfc3339.success is True
+    assert rfc3339.metrics["accepted_formats"] == ["rfc3339"]
+    assert rfc3339.metrics["parse_failure_count"] == 2
+    assert rfc3339.metrics["format_results"]["rfc3339"] == {
+        "parse_success_count": 2,
+        "parse_failure_count": 2,
+    }
+    assert both.metrics["accepted_formats"] == [
+        "rfc3339",
+        "MM/DD/YYYY hh:mm AM UTC",
+    ]
+    assert both.metrics["parse_failure_count"] == 1
+    assert both.metrics["parse_success_rate"] == pytest.approx(0.75)
+
+
+def test_datetime_diagnostic_rejects_unknown_or_duplicate_formats(
+    dataset: Path,
+    artifact_id: UUID,
+) -> None:
+    engine = DiagnosticEngine(PolicyGateway())
+
+    with pytest.raises(PolicyViolation, match="accepted_formats"):
+        engine.run(
+            _request(
+                DiagnosticTool.CHECK_DATETIME_PARSE,
+                artifact_id,
+                {"column": "event_time", "accepted_formats": ["%Y-%m-%d"]},
+            ),
+            dataset,
+        )
+    with pytest.raises(PolicyViolation, match="unique"):
+        engine.run(
+            _request(
+                DiagnosticTool.CHECK_DATETIME_PARSE,
+                artifact_id,
+                {"column": "event_time", "accepted_formats": ["rfc3339", "rfc3339"]},
+            ),
+            dataset,
+        )
 
 
 def test_raw_value_profile_and_explicit_null_markers(
@@ -142,20 +225,70 @@ def test_raw_value_profile_and_explicit_null_markers(
 
 def test_log_signature_diagnostic(tmp_path: Path, artifact_id: UUID) -> None:
     path = tmp_path / "pipeline.log"
-    path.write_text("timeout contacting source\nERROR duplicate key\n", encoding="utf-8")
+    path.write_text(
+        "INFO load started\nERROR schema_validation missing=customer_id observed=customerId\n",
+        encoding="utf-8",
+    )
     engine = DiagnosticEngine(PolicyGateway())
 
     result = engine.run(
         _request(
             DiagnosticTool.INSPECT_LOG_SIGNATURES,
             artifact_id,
-            {"signatures": ["timeout", "duplicate", "missing"]},
+            {"signatures": ["missing=customer_id", "customerId", "timeout"]},
         ),
         path,
     )
 
     assert result.success is True
-    assert result.metrics == {"timeout": 1, "duplicate": 1}
+    assert result.metrics == {
+        "signature_counts": {"missing=customer_id": 1, "customerId": 1},
+        "matching_lines": [
+            {
+                "line_number": 2,
+                "text": "ERROR schema_validation missing=customer_id observed=customerId",
+            }
+        ],
+        "matching_lines_truncated": False,
+    }
+    assert result.warnings == []
+
+
+def test_log_context_is_deduplicated_bounded_and_redacted(
+    tmp_path: Path,
+    artifact_id: UUID,
+) -> None:
+    path = tmp_path / "bounded.log"
+    secret_line = "ERROR api_key=supersecretvalue missing=customer_id"
+    unique_lines = [f"ERROR row={index} {'x' * 600}" for index in range(12)]
+    path.write_text(
+        "\n".join([secret_line, secret_line, *unique_lines]) + "\n",
+        encoding="utf-8",
+    )
+    engine = DiagnosticEngine(PolicyGateway())
+
+    result = engine.run(
+        _request(
+            DiagnosticTool.INSPECT_LOG_SIGNATURES,
+            artifact_id,
+            {"signatures": ["error", "missing=customer_id"]},
+        ),
+        path,
+    )
+
+    contexts = result.metrics["matching_lines"]
+    assert result.metrics["signature_counts"] == {"error": 14, "missing=customer_id": 2}
+    assert len(contexts) == 10
+    assert len({item["text"] for item in contexts}) == 10
+    assert all(len(item["text"]) <= 500 for item in contexts)
+    assert result.metrics["matching_lines_truncated"] is True
+    rendered = str(contexts)
+    assert "supersecretvalue" not in rendered
+    assert "[REDACTED:assigned_secret]" in rendered
+    assert result.warnings == [
+        "Matching log context was truncated to the safe line limit.",
+        "Credential-like text was redacted from matching log context.",
+    ]
 
 
 def test_diagnostic_failure_is_structured(dataset: Path, artifact_id: UUID) -> None:

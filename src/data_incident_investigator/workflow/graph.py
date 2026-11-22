@@ -286,6 +286,7 @@ def build_investigation_graph(
     def verify_hypotheses(state: InvestigationState) -> dict[str, object]:
         verdict = services.reasoning.verify_hypotheses(
             hypotheses=state["hypotheses"],
+            evidence=state.get("evidence", []),
             diagnostics=state.get("diagnostics", []),
             revision=state["plan_revision"],
         )

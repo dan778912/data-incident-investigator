@@ -68,6 +68,7 @@ class ReasoningService(Protocol):
         self,
         *,
         hypotheses: list[HypothesisRecord],
+        evidence: list[EvidenceRecord],
         diagnostics: list[DiagnosticRecord],
         revision: int,
     ) -> VerificationRecord: ...

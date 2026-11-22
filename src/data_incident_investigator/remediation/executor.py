@@ -4,10 +4,15 @@ import hashlib
 import shutil
 import unicodedata
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import pandas as pd
 
+from data_incident_investigator.domain.datetime_formats import (
+    PANDAS_DATETIME_FORMATS,
+    RFC3339_PATTERN,
+    CanonicalDatetimeFormat,
+)
 from data_incident_investigator.domain.remediation import (
     ApprovalDecision,
     CastColumn,
@@ -384,8 +389,10 @@ class RemediationExecutor:
             datetime_errors: Literal["raise", "coerce"] = (
                 "raise" if operation.on_error == "reject" else "coerce"
             )
-            updated[operation.column] = pd.to_datetime(
-                updated[operation.column], errors=datetime_errors, utc=True, format="mixed"
+            updated[operation.column] = self._parse_datetime_formats(
+                updated[operation.column],
+                operation.accepted_formats,
+                errors=datetime_errors,
             )
             return updated
         if isinstance(operation, NormalizeString):
@@ -410,6 +417,35 @@ class RemediationExecutor:
             updated[operation.column] = updated[operation.column].replace(operation.mapping)
             return updated
         raise TypeError(f"unsupported remediation operation: {type(operation).__name__}")
+
+    @staticmethod
+    def _parse_datetime_formats(
+        series: pd.Series[Any],
+        formats: list[CanonicalDatetimeFormat],
+        *,
+        errors: Literal["raise", "coerce"],
+    ) -> pd.Series[Any]:
+        parsed = pd.Series(pd.NaT, index=series.index, dtype="datetime64[ns, UTC]")
+        for format_name in formats:
+            source = series
+            if format_name == "rfc3339":
+                eligible = series.astype("string").str.fullmatch(RFC3339_PATTERN, na=False)
+                source = series.where(eligible)
+            candidate = pd.to_datetime(
+                source,
+                errors="coerce",
+                utc=True,
+                format=PANDAS_DATETIME_FORMATS[format_name],
+            )
+            newly_matched = parsed.isna() & candidate.notna()
+            parsed.loc[newly_matched] = candidate.loc[newly_matched]
+
+        failed = series.notna() & parsed.isna()
+        if errors == "raise" and bool(failed.any()):
+            raise ValueError(
+                f"{int(failed.sum())} values do not match the declared datetime formats"
+            )
+        return parsed
 
     @staticmethod
     def _require_columns(frame: pd.DataFrame, columns: list[str]) -> None:
