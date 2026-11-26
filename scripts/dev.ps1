@@ -12,8 +12,9 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $webRoot = Join-Path $repoRoot "web"
 $venvPython = Join-Path $repoRoot ".venv\Scripts\python.exe"
+$isWindowsHost = [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
 $python = if (Test-Path $venvPython) { $venvPython } else { (Get-Command python).Source }
-$npm = if ($IsWindows) { (Get-Command npm.cmd).Source } else { (Get-Command npm).Source }
+$npm = if ($isWindowsHost) { (Get-Command npm.cmd).Source } else { (Get-Command npm).Source }
 $logRoot = Join-Path $repoRoot "tmp\dev"
 New-Item -ItemType Directory -Force $logRoot | Out-Null
 
@@ -49,7 +50,7 @@ $startArguments = @{
     RedirectStandardOutput = (Join-Path $logRoot "api.stdout.log")
     RedirectStandardError = (Join-Path $logRoot "api.stderr.log")
 }
-if ($IsWindows) {
+if ($isWindowsHost) {
     $startArguments.WindowStyle = "Hidden"
 }
 
@@ -62,7 +63,7 @@ try {
             throw "The API exited during startup. See $logRoot for details."
         }
         try {
-            $response = Invoke-WebRequest -Uri $healthUri -TimeoutSec 1
+            $response = Invoke-WebRequest -Uri $healthUri -TimeoutSec 1 -UseBasicParsing
             if ($response.StatusCode -eq 200) {
                 $ready = $true
                 break
