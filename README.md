@@ -6,14 +6,12 @@ dataset plus optional logs, schemas, and runbooks; the workflow retrieves eviden
 revises hypotheses, cites its sources, and pauses for human approval before creating a remediated
 working copy.
 
-This is a solo capstone project targeted for December 10, 2026 and built from scratch for Assignment
-4, not continued from Assignment 3. It is intentionally narrow: the agent can investigate uploaded
-artifacts, but it cannot run arbitrary code, access production systems, or modify an original
-dataset.
+The application is intentionally narrow: it can investigate uploaded artifacts, but it cannot run
+arbitrary code, access production systems, or modify an original dataset.
 
-## Capstone feature claims
+## Core capabilities
 
-The submission claims exactly three advanced capabilities:
+The project implements three advanced capabilities:
 
 1. **Multi-step planning with self-correction.** Diagnostic hypotheses are checked against
    deterministic observations and revised when evidence contradicts them.
@@ -22,10 +20,9 @@ The submission claims exactly three advanced capabilities:
 3. **Persistent human-in-the-loop approval.** A durable LangGraph interrupt blocks remediation
    until a human accepts the exact proposal, plan, and source hashes.
 
-SQLite persistence and restart-safe checkpoints support these features but are not claimed as a
-fourth advanced capability.
+SQLite persistence and restart-safe checkpoints support these features.
 
-## Current status
+## Project status
 
 | Area | Status |
 |---|---|
@@ -35,8 +32,8 @@ fourth advanced capability.
 | Signed approval and replay protection | Working with a durable SQLite nonce ledger |
 | Typed remediation on immutable working copies | Working with final-state post-fix checks and manual escalation outside the safe DSL |
 | Evaluation system | The frozen NVIDIA baseline at commit `e3d9c88` achieved 100% exact causes, 100% citation precision, and 4/4 blocked attacks with zero safety violations |
-| Container and CI | Remote CI passed backend, frontend, and container jobs; local Docker rehearsal remains |
-| Submission artifacts | Sanitized evaluation evidence is frozen with SHA-256 hashes; the evaluation report and 269-word process log are complete; a 5:46 silent 1080p demo master and timestamped narration script are prepared |
+| Container and CI | Remote CI verifies the backend, frontend, and container build; Compose supports local deployment |
+| Review artifacts | The [narrated demo](submission/IncidentLens.mp4), [evaluation report](docs/EVALUATION_REPORT.md), [process log](PROCESS_LOG.md), and SHA-256-verified evaluation evidence are included |
 
 The frozen evaluated baseline is in [`submission/evaluation`](submission/evaluation) and is explicitly
 bound to source commit `e3d9c88`: 19 of 20
@@ -49,8 +46,8 @@ estimate for this development run; that is not a guarantee of perpetual or produ
 
 The default `LLM_PROVIDER=fake` is deliberate. It gives development and CI a reproducible scenario
 that visibly performs an insufficient retrieval, refines the query, disproves a null hypothesis,
-revises to a type-drift hypothesis, and stops for approval. `LLM_PROVIDER=nvidia` selects the free
-development endpoint; `LLM_PROVIDER=openai` retains the measured paid baseline.
+revises to a type-drift hypothesis, and stops for approval. `LLM_PROVIDER=nvidia` selects the
+NVIDIA-hosted development endpoint; `LLM_PROVIDER=openai` retains the measured paid baseline.
 
 ## Safety boundary
 
@@ -82,7 +79,7 @@ Copy-Item .env.example .env
 Open `http://127.0.0.1:5173`. The development script starts FastAPI on port 8000, starts Vite in
 live-API mode, stores logs below ignored `tmp/dev/`, and stops the API when the frontend exits.
 During development, port 8000 is deliberately API-only so an old compiled mock UI cannot be mistaken
-for the live demo. The Vite port is strict rather than silently moving when occupied. Use `-ApiPort`
+for the live application. The Vite port is strict rather than silently moving when occupied. Use `-ApiPort`
 or `-WebPort` to choose different free ports.
 
 To run the compiled single-process application instead:
@@ -97,7 +94,7 @@ FastAPI then serves both the API and `web/dist` at `http://127.0.0.1:8000`.
 
 ## Enable live NVIDIA reasoning
 
-For the zero-API-cost capstone configuration, generate an NVIDIA Developer API key at
+For the NVIDIA development configuration, generate an NVIDIA Developer API key at
 [`build.nvidia.com`](https://build.nvidia.com/nvidia/nemotron-3.5-lightning-30b-a3b/build),
 then edit the ignored `.env` file locally:
 
@@ -128,16 +125,14 @@ adapter uses the Responses API with Pydantic structured outputs and `store=False
 live provider does not broaden the tool boundary: the model proposes typed data, while application
 code owns retrieval, diagnostics, approval, and file changes.
 
-## What “install Docker later” means
+## Container deployment
 
 Docker is optional for building and using the project during development. On Windows, installing it
-usually means adding Docker Desktop with its WSL 2 backend so the final container can be rehearsed
-locally. That can consume several gigabytes and may require a restart, which is why it is not a
-day-one dependency.
+usually means adding Docker Desktop with its WSL 2 backend. This can consume several gigabytes and
+may require a restart.
 
 The repository already contains the Docker configuration, and CI builds it on every change. Local
-installation is only needed before the final demo to verify this command on the presentation
-machine:
+installation is only needed to run the container locally:
 
 ```powershell
 # In .env, set a random value of at least 32 characters for APPROVAL_HMAC_KEY.
@@ -213,8 +208,8 @@ and unresolved local paths, and writes a SHA-256 manifest:
   --output submission\evaluation
 ```
 
-Reported capstone metrics will come from dated live-model operating-system runs, not the fake
-provider or UI fixtures.
+Reported evaluation metrics come from dated live-model operating-system runs, not the fake provider
+or UI fixtures.
 
 ## Repository layout
 
@@ -223,8 +218,8 @@ src/data_incident_investigator/  FastAPI service, graph, policies, and provider 
 web/                             React/TypeScript interface
 tests/                           Unit and integration tests
 evals/                           Frozen corpus, adversarial cases, schemas, and grader
-docs/                            Architecture and delivery plan
-submission/evaluation/          Sanitized live/adversarial evidence and SHA-256 manifest
+docs/                            Architecture, capability map, and evaluation report
+submission/                     Narrated demo and sanitized evaluation evidence
 scripts/                         Native development and verification commands
 data/                            Ignored local databases and case artifacts
 ```
@@ -256,7 +251,6 @@ Interactive API documentation is available at `/docs` while the service is runni
 
 The [detailed capability-to-code map](docs/CAPABILITY_MAP.md) is the supplementary evidence index for additional guardrails, evaluation integration, cost accounting, and scoped verification notes.
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the component and trust-boundary design,
-[docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) for the delivery schedule and definition of done, and
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the component and trust-boundary design and
 [docs/EVALUATION_REPORT.md](docs/EVALUATION_REPORT.md) for the reviewed live results, explicit
 limitations, and the provider-matched adversarial results.

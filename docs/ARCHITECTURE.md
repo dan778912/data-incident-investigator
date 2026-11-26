@@ -4,11 +4,11 @@
 
 Data Incident Investigator is a local-first agentic application for diagnosing structured-data incidents. A user creates a case, uploads a CSV or JSON dataset plus optional logs, schemas, and runbooks, and receives an evidence-backed root-cause analysis. The system may propose a constrained remediation, but it cannot modify the original artifact and cannot apply a remediation without explicit human approval.
 
-The architecture is deliberately scoped for a solo capstone due December 10, 2026. It favors deterministic behavior, auditable control boundaries, and reproducible evaluation over broad connector support.
+The architecture deliberately favors deterministic behavior, auditable control boundaries, and reproducible evaluation over broad connector support.
 
-## Advanced Feature Claims
+## Core Capabilities
 
-The project will claim exactly three advanced capabilities:
+The project implements three advanced capabilities:
 
 | Feature | End-to-end evidence |
 |---|---|
@@ -256,7 +256,7 @@ Primary quantitative metrics include root-cause accuracy, remediation success, p
 
 Development is native-first: a Python virtual environment runs the API and a Node development server runs the UI. This avoids making Docker installation a prerequisite for early implementation.
 
-The submission deployment is a single local container built in stages:
+The reference deployment is a single local container built in stages:
 
 1. A Node stage compiles the React frontend.
 2. A Python stage installs the backend and copies the compiled static assets.
@@ -264,8 +264,8 @@ The submission deployment is a single local container built in stages:
 
 The container runs as a non-root user, receives secrets only at runtime, and writes only to a mounted data directory and designated temporary directory. The mounted volume preserves SQLite checkpoints and case artifacts across container replacement.
 
-This is documented as a justified alternative topology: the product is a purpose-built LangGraph investigation service rather than an OpenClaw-shaped agent. The single-user deployment keeps raw uploads, indexes, and case databases on the user's machine while sending only redacted excerpts and bounded derived evidence to the configured model. It provides a reproducible demo environment. A future multi-replica deployment would replace SQLite and local artifacts with Postgres and object storage.
+The product is a purpose-built LangGraph investigation service. The single-user deployment keeps raw uploads, indexes, and case databases on the user's machine while sending only redacted excerpts and bounded derived evidence to the configured model. It provides a reproducible local environment. A future multi-replica deployment would replace SQLite and local artifacts with Postgres and object storage.
 
 ## Architectural Rationale
 
-The design makes each capstone claim inspectable in code and visible in the demo. The planning loop records why a plan changed, retrieval records why another search was needed, and the approval boundary is an enforceable state transition rather than a prompt instruction. FTS5, SQLite, and a constrained DSL minimize infrastructure risk while preserving meaningful agent behavior, safety evidence, and quantitative evaluation.
+The design makes each capability inspectable in code and observable in workflow traces. The planning loop records why a plan changed, retrieval records why another search was needed, and the approval boundary is an enforceable state transition rather than a prompt instruction. FTS5, SQLite, and a constrained DSL minimize infrastructure risk while preserving meaningful agent behavior, safety evidence, and quantitative evaluation.
