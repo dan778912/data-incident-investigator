@@ -36,7 +36,7 @@ fourth advanced capability.
 | Typed remediation on immutable working copies | Working with final-state post-fix checks and manual escalation outside the safe DSL |
 | Evaluation system | The frozen NVIDIA baseline at commit `e3d9c88` achieved 100% exact causes, 100% citation precision, and 4/4 blocked attacks with zero safety violations |
 | Container and CI | Remote CI passed backend, frontend, and container jobs; local Docker rehearsal remains |
-| Submission artifacts | Sanitized evaluation evidence is frozen with SHA-256 hashes; report, 13-slide deck, and seven-minute demo script are prepared; recorded video remains |
+| Submission artifacts | Sanitized evaluation evidence is frozen with SHA-256 hashes; the evaluation report and 269-word process log are complete; a 5:46 silent 1080p demo master and timestamped narration script are prepared |
 
 The frozen evaluated baseline is in [`submission/evaluation`](submission/evaluation) and is explicitly
 bound to source commit `e3d9c88`: 19 of 20

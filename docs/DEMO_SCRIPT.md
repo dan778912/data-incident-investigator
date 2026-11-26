@@ -1,100 +1,64 @@
-# Seven-Minute Demo Script
+# Capstone Demo Narration — 5:46
 
-## Preflight
+Use this script with `incident-lens-capstone-demo-silent-1080p.mp4`. Read naturally and leave short pauses so the interface remains readable. Do not read case IDs or hashes aloud.
 
-- Run the application with `LLM_PROVIDER=nvidia` and the reviewed
-  `nvidia/nemotron-3.5-lightning-30b-a3b` release configuration.
-- Open the demo UI at `http://127.0.0.1:5173`; port 8000 is the API only.
-- Keep the I20 fixture ready: `orders.csv`, `pipeline.log`, and
-  `order_contract_v3.md`.
-- Open the frozen NVIDIA evaluation report, one adversarial trace, and the
-  architecture diagram in separate tabs.
-- Confirm the original I20 dataset hash and release commit on screen.
-- Never show `.env`, API keys, local credential stores, or full personal paths.
+## 0:00–0:11 — Product and safety boundary
 
-## 0:00–0:35 — Problem, model, and boundary
+“Incident Lens is a local-first agent for investigating data-pipeline failures. It combines evidence retrieval, read-only diagnostics, deterministic safety policy, and human approval before any data change.”
 
-**Show:** The dashboard.
+## 0:11–0:26 — Create the live NVIDIA incident
 
-**Say:** “Incident Lens is a local-first data-incident investigator using NVIDIA
-Nemotron. The model proposes typed actions; it cannot run shell commands,
-arbitrary code, or overwrite source files.”
+“This is a live NVIDIA Nemotron investigation. I upload the failed orders dataset, its pipeline log, and the active data contract. Each artifact is validated, hashed, and isolated to this case.”
 
-## 0:35–1:15 — Create the dual-fault incident
+## 0:26–0:48 — Verified dual cause
 
-**Show:** Create “Renamed identifier and malformed timestamp,” upload the three
-I20 artifacts, and start the investigation.
+“The workflow verifies two independent causes. The source identifier was renamed, and the timestamp column contains two supported formats. The conclusion is backed by five cited evidence items rather than model confidence alone.”
 
-**Say:** “I’m uploading a dataset, pipeline log, and contract. Each file is
-validated, hashed, and isolated to this case. This incident contains two
-independent faults.”
+## 0:48–1:35 — Evidence and typed diagnostics
 
-## 1:15–2:05 — Bounded retrieval with provenance
+“The timeline records every retrieval, hypothesis, diagnostic, and policy decision. Retrieval is restricted to the uploaded case files, and citations preserve their source locations. The model can request only six allowlisted, read-only diagnostic tools. Application code resolves artifact ownership, validates every argument, and determines which observations actually support a cause.”
 
-**Show:** Evidence sources, locations, and the current contract citation.
+“The repair proposal is also constrained. It may rename the column and parse only the timestamp formats that diagnostics positively observed. Arbitrary code, shell access, and direct source-file mutation are unavailable.”
 
-**Say:** “Retrieval is limited to these case files. Citations retain their source
-locations, retrieved text stays untrusted, and generated queries are reduced to
-safe keywords.”
+## 1:35–2:03 — Human approval guardrail
 
-## 2:05–3:00 — Typed planning and deterministic verification
+“This is the enforceable guardrail. The workflow stops before mutation and displays the exact typed operations, expected impact, plan hash, and source hash. Approval is bound to this case and plan with an expiring, single-use nonce. Until I approve, no working copy can be created.”
 
-**Show:** The diagnostic timeline and the two verified causes:
-`schema_column_renamed` and `mixed_datetime_formats`.
+## 2:03–2:28 — Working-copy remediation
 
-**Say:** “The agent uses allowlisted, read-only diagnostics. Deterministic code
-verifies two causes: a renamed schema column and mixed datetime formats.”
+“After approval, the system creates a separate working copy, applies the two operations, and runs seven post-fix checks. Every check passes, the original hash remains unchanged, and the remediated file is ready to download.”
 
-## 3:00–4:00 — Exact repair and human approval boundary
+## 2:28–2:42 — Reproducible feature exercise
 
-**Show:** The `rename_column` and `parse_datetime` operations, followed by the
-plan and source hashes.
+“The live incident already demonstrated human approval. I now use the application’s deterministic development provider to force the other two advanced paths reproducibly: iterative retrieval and self-correction.”
 
-**Say:** “The repair renames the column and accepts only timestamp formats proven
-by diagnostics. Nothing changes until this exact hashed plan receives one-time
-approval.”
+## 2:42–3:02 — Second scenario result
 
-## 4:00–4:40 — Working-copy remediation
+“This scenario begins with join-row loss after a schema deployment. The final diagnosis is a customer identifier type drift, but the workflow does not reach that answer in one step.”
 
-**Show:** Approve the plan, show the passed validation, and display the download
-button for the remediated copy.
+## 3:02–3:39 — Iterative retrieval triggers
 
-**Say:** “Approval creates and validates a working copy. The original remains
-unchanged, and all 12 automatically repaired evaluation cases passed their
-postconditions.”
+“The first retrieval returns only generic null-rate guidance. The agent assesses that evidence as insufficient and explicitly refines its query. Retrieval round two finds the schema-version evidence showing that customer identifiers changed from integer to string. Only then does the workflow proceed.”
 
-## 4:40–5:25 — Safe escalation is a feature
+## 3:39–4:29 — Self-correction triggers
 
-**Show:** The frozen I18 result.
+“The first hypothesis predicts a null spike. A read-only diagnostic disproves it, and verification records a failed result at plan revision zero. The agent then revises the hypothesis instead of forcing the original explanation. At plan revision one, a second diagnostic reproduces the integer-versus-string mismatch and verification confirms the corrected cause.”
 
-**Say:** “I18 found duplicate replay records but could not prove their correct
-ordering. It refused an unsafe keep-last repair and escalated without modifying
-data.”
+## 4:29–4:54 — Approval remains mandatory
 
-## 5:25–6:15 — Prompt-injection evidence
+“Even after successful self-correction, the agent still cannot act autonomously. The proposed cast operation stops at the same approval boundary, with the original preserved and the operation restricted to a working copy.”
 
-**Show:** The four-attack report and ATK-CSV-003 evidence.
+## 4:54–5:46 — Measured evaluation and close
 
-**Say:** “We tested prompt injection through a log, runbook, CSV cell, and schema
-description. All four attacks were blocked, with no prohibited calls,
-unauthorized mutations, or secret leaks.”
+“The frozen NVIDIA evaluation is pinned to its evaluated source commit. Across twenty incidents, it produced the exact root-cause set in all twenty cases. All twelve automatic repairs passed their post-fix checks, and all fifty citations supported their claims. Median latency was 8.2 seconds.”
 
-## 6:15–7:00 — Numbers, deployment, and honest close
+“Four real prompt-injection attacks were placed in a pipeline log, retrieved runbook, dataset cell, and schema description. All four were blocked with no prohibited tool call, unauthorized mutation, or secret leakage. One strict workflow safely escalated because ordering evidence was insufficient. That limitation is retained rather than weakening the mutation boundary.”
 
-**Show:** The Evaluation page, then the architecture.
+“Incident Lens therefore demonstrates three end-to-end capabilities: iterative retrieval, verified self-correction, and durable human approval, with safety controls enforced outside the model.”
 
-**Say:** “The release achieved 19 of 20 strict workflow passes, 20 of 20 exact
-causes, 90.48 percent evidence recall, 100 percent citation precision, and four
-of four attacks blocked. Median latency was 8.163 seconds, with a configured
-cost estimate of zero dollars.”
+## Export checklist
 
-“React and FastAPI provide the interface, LangGraph and SQLite preserve workflow
-state, and deterministic policy controls every mutation. NVIDIA’s endpoint is
-for development, and I18 still requires stronger ordering evidence.”
-
-## Recording contingencies
-
-- If the provider is unavailable, use the dated frozen baseline traces and say
-  clearly that they are recorded evidence rather than a live call.
-- Do not substitute the paid OpenAI baseline metrics for the NVIDIA release.
-- Stop and restart if a notification exposes unrelated personal information.
+- Record the narration as separate clips at the timestamps above.
+- Keep the deterministic-provider disclosure in the final narration.
+- Add reviewed captions.
+- Export as a 1080p MP4 and confirm the final duration remains between 5 and 10 minutes.
