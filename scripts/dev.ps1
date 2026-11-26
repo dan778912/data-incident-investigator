@@ -9,6 +9,35 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+function Assert-PortAvailable {
+    param(
+        [Parameter(Mandatory)]
+        [int]$Port,
+        [Parameter(Mandatory)]
+        [string]$Label
+    )
+
+    $listener = [System.Net.Sockets.TcpListener]::new(
+        [System.Net.IPAddress]::Loopback,
+        $Port
+    )
+    try {
+        $listener.Start()
+    }
+    catch [System.Net.Sockets.SocketException] {
+        throw "$Label port $Port is already in use. Stop the existing process or choose another port."
+    }
+    finally {
+        $listener.Stop()
+    }
+}
+
+if ($ApiPort -eq $WebPort) {
+    throw "API and web ports must be different."
+}
+Assert-PortAvailable -Port $ApiPort -Label "API"
+Assert-PortAvailable -Port $WebPort -Label "Web"
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $webRoot = Join-Path $repoRoot "web"
 $venvPython = Join-Path $repoRoot ".venv\Scripts\python.exe"
@@ -34,6 +63,7 @@ if (-not (Test-Path (Join-Path $webRoot "node_modules"))) {
 $env:APP_ENV = "development"
 $env:APP_HOST = "127.0.0.1"
 $env:APP_PORT = $ApiPort.ToString()
+$env:FRONTEND_DIR = Join-Path $logRoot "api-only-frontend"
 $env:VITE_API_MODE = "live"
 $env:VITE_API_TARGET = "http://127.0.0.1:$ApiPort"
 
@@ -77,13 +107,13 @@ try {
         throw "The API did not become healthy at $healthUri. See $logRoot for details."
     }
 
-    Write-Host "API ready at http://127.0.0.1:$ApiPort" -ForegroundColor Green
+    Write-Host "Backend API ready at http://127.0.0.1:$ApiPort (API only)" -ForegroundColor Green
     Write-Host "API logs: $logRoot" -ForegroundColor DarkGray
-    Write-Host "Starting the web app at http://127.0.0.1:$WebPort" -ForegroundColor Green
+    Write-Host "Open the demo UI at http://127.0.0.1:$WebPort" -ForegroundColor Green
 
     Push-Location $webRoot
     try {
-        & $npm run dev -- "--host=127.0.0.1" "--port=$WebPort"
+        & $npm run dev -- "--host=127.0.0.1" "--port=$WebPort" "--strictPort"
         if ($LASTEXITCODE -ne 0) {
             throw "The frontend exited with code $LASTEXITCODE."
         }

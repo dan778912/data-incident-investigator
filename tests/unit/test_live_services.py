@@ -56,6 +56,7 @@ from data_incident_investigator.services.live import (
     ReplaceValuesDraft,
     VerificationDraft,
     VerifiedCauseDraft,
+    _datetime_repair_from_diagnostics,
 )
 from data_incident_investigator.workflow.security import canonical_sha256
 from data_incident_investigator.workflow.state import ApprovalRecord, HypothesisRecord
@@ -925,6 +926,117 @@ def test_live_diagnostics_enforce_allowlist_and_selected_artifact_boundary(
         )
 
 
+def test_live_diagnostics_prove_bounded_datetime_format_coverage(tmp_path: Path) -> None:
+    data_root = tmp_path / "data"
+    database_path = tmp_path / "application.sqlite3"
+    repository = _repository(database_path)
+    resolver = CasePathResolver(data_root)
+    case = _case(repository, "Mixed datetime formats")
+    dataset = _artifact(
+        repository=repository,
+        resolver=resolver,
+        case_id=case.case_id,
+        kind=ArtifactKind.DATASET,
+        filename="orders.csv",
+        content=(
+            "id,created_at\n"
+            "1,2026-11-21T10:15:00Z\n"
+            '2,"11/21/2026 10:20 AM UTC"\n'
+            "3,2026-11-21T10:25:00Z\n"
+        ),
+    )
+    service = LiveDiagnosticService(
+        ArtifactCatalog(database_path, data_root),
+        DiagnosticEngine(PolicyGateway()),
+    )
+    artifact_ids = [str(dataset.artifact_id)]
+
+    partial = service.run(
+        hypotheses=[
+            _hypothesis(
+                dataset.artifact_id,
+                tool=DiagnosticTool.CHECK_DATETIME_PARSE.value,
+                arguments={"column": "created_at", "accepted_formats": ["rfc3339"]},
+            )
+        ],
+        artifact_ids=artifact_ids,
+    )
+
+    assert len(partial) == 2
+    assert json.loads(partial[0]["observed_signal"])["metrics"]["parse_failure_count"] == 1
+    coverage_action = json.loads(partial[1]["action"])
+    coverage_signal = json.loads(partial[1]["observed_signal"])
+    assert coverage_action["arguments"]["accepted_formats"] == [
+        "rfc3339",
+        "MM/DD/YYYY hh:mm AM UTC",
+    ]
+    assert coverage_signal["metrics"]["parse_failure_count"] == 0
+    assert partial[1]["supports_hypothesis"] is True
+
+    complete = service.run(
+        hypotheses=[
+            _hypothesis(
+                dataset.artifact_id,
+                tool=DiagnosticTool.CHECK_DATETIME_PARSE.value,
+                arguments={
+                    "column": "created_at",
+                    "accepted_formats": [
+                        "rfc3339",
+                        "MM/DD/YYYY hh:mm AM UTC",
+                    ],
+                },
+            )
+        ],
+        artifact_ids=artifact_ids,
+    )
+
+    assert len(complete) == 1
+    assert json.loads(complete[0]["observed_signal"])["metrics"]["parse_failure_count"] == 0
+
+    empty_format_request = service.run(
+        hypotheses=[
+            _hypothesis(
+                dataset.artifact_id,
+                tool=DiagnosticTool.CHECK_DATETIME_PARSE.value,
+                arguments={"column": "created_at", "accepted_formats": []},
+            )
+        ],
+        artifact_ids=artifact_ids,
+    )
+    assert len(empty_format_request) == 2
+    assert json.loads(empty_format_request[1]["action"])["arguments"]["accepted_formats"] == [
+        "rfc3339",
+        "MM/DD/YYYY hh:mm AM UTC",
+    ]
+
+    single_format = _artifact(
+        repository=repository,
+        resolver=resolver,
+        case_id=case.case_id,
+        kind=ArtifactKind.DATASET,
+        filename="single-format.csv",
+        content="id,created_at\n1,2026-11-21T10:15:00Z\n",
+    )
+    wrong_subset = service.run(
+        hypotheses=[
+            _hypothesis(
+                single_format.artifact_id,
+                tool=DiagnosticTool.CHECK_DATETIME_PARSE.value,
+                arguments={
+                    "column": "created_at",
+                    "accepted_formats": ["MM/DD/YYYY hh:mm AM UTC"],
+                },
+            )
+        ],
+        artifact_ids=[str(single_format.artifact_id)],
+    )
+    assert len(wrong_subset) == 2
+    assert wrong_subset[1]["supports_hypothesis"] is False
+    repair = _datetime_repair_from_diagnostics(wrong_subset)
+    assert repair is not None
+    assert repair["accepted_formats"] == ["rfc3339"]
+
+
 def test_live_remediation_creates_and_registers_working_copy(tmp_path: Path) -> None:
     data_root = tmp_path / "data"
     database_path = tmp_path / "application.sqlite3"
@@ -1262,6 +1374,16 @@ def test_live_remediation_replaces_incomplete_datetime_plan_with_proven_formats(
                         "metrics": {
                             "column": "created_at",
                             "accepted_formats": accepted_formats,
+                            "format_results": {
+                                "rfc3339": {
+                                    "parse_failure_count": 1,
+                                    "parse_success_count": 1,
+                                },
+                                "MM/DD/YYYY hh:mm AM UTC": {
+                                    "parse_failure_count": 1,
+                                    "parse_success_count": 1,
+                                },
+                            },
                             "parse_failure_count": 0,
                             "parse_success_rate": 1.0,
                         },

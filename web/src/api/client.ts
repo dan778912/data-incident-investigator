@@ -65,6 +65,7 @@ interface BackendDiagnostic {
 interface BackendVerification {
   confirmed: boolean;
   root_cause_id: string | null;
+  root_cause_codes?: string[];
   reason: string;
 }
 
@@ -217,6 +218,7 @@ const mapInvestigation = (
   const proposal = state.remediation;
   const manualEscalation = proposal?.disposition === "manual_escalation";
   const verification = state.verification;
+  const rootCauseCodes = verification?.root_cause_codes ?? [];
   const rootCause = state.hypotheses.find(
     (hypothesis) => hypothesis.hypothesis_id === verification?.root_cause_id
   );
@@ -234,10 +236,13 @@ const mapInvestigation = (
     timeline: mapTimeline(state.trace),
     citations: mapCitations(state.evidence),
     rootCause: {
-      title: rootCause?.statement ?? "Investigation in progress",
+      title:
+        rootCauseCodes.length > 1
+          ? rootCauseCodes.map(stageTitle).join(" + ")
+          : rootCause?.statement ?? "Investigation in progress",
       explanation: verification?.reason ?? "The workflow is still validating evidence.",
       confidence: verification?.confirmed === true ? 94 : 0,
-      affectedRows: 0
+      causeCount: rootCauseCodes.length || (verification?.confirmed === true ? 1 : 0)
     },
     approval: {
       id: state.case_id,

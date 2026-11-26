@@ -4,6 +4,7 @@
 
 - Run the application with `LLM_PROVIDER=nvidia` and the reviewed
   `nvidia/nemotron-3.5-lightning-30b-a3b` release configuration.
+- Open the demo UI at `http://127.0.0.1:5173`; port 8000 is the API only.
 - Keep the I20 fixture ready: `orders.csv`, `pipeline.log`, and
   `order_contract_v3.md`.
 - Open the frozen NVIDIA evaluation report, one adversarial trace, and the
@@ -93,7 +94,7 @@ for development, and I18 still requires stronger ordering evidence.”
 
 ## Recording contingencies
 
-- If the provider is unavailable, use the dated frozen release traces and say
+- If the provider is unavailable, use the dated frozen baseline traces and say
   clearly that they are recorded evidence rather than a live call.
 - Do not substitute the paid OpenAI baseline metrics for the NVIDIA release.
 - Stop and restart if a notification exposes unrelated personal information.

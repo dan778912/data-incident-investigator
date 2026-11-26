@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator,
 from data_incident_investigator.diagnostics.engine import DiagnosticEngine
 from data_incident_investigator.domain.artifacts import ArtifactKind, StoredArtifact
 from data_incident_investigator.domain.causes import RootCauseCode
+from data_incident_investigator.domain.datetime_formats import CANONICAL_DATETIME_FORMAT_ORDER
 from data_incident_investigator.domain.diagnostics import (
     CheckDatetimeParseArgs,
     CheckDuplicateKeysArgs,
@@ -1191,32 +1192,94 @@ class LiveDiagnosticService:
             request = DiagnosticRequest.model_validate(
                 action | {"rationale": hypothesis["statement"]}
             )
-            observation = self._engine.run(request, artifacts[artifact_id].storage_path)
-            metrics = dict(observation.metrics)
-            metrics.pop("sample", None)
-            signal, _ = redact_secrets(
-                json.dumps(
+            record, metrics = self._execute(
+                hypothesis_id=hypothesis["hypothesis_id"],
+                request=request,
+                action=hypothesis["diagnostic_action"],
+                storage_path=artifacts[artifact_id].storage_path,
+            )
+            records.append(record)
+            coverage_request = self._datetime_coverage_request(request, metrics=metrics)
+            if coverage_request is not None:
+                coverage_action = json.dumps(
                     {
-                        "summary": observation.summary,
-                        "metrics": metrics,
-                        "warnings": observation.warnings,
+                        "tool": coverage_request.tool.value,
+                        "artifact_id": str(coverage_request.artifact_id),
+                        "arguments": coverage_request.arguments,
                     },
-                    allow_nan=False,
                     sort_keys=True,
-                    default=str,
-                )[:6000]
-            )
-            records.append(
-                {
-                    "hypothesis_id": hypothesis["hypothesis_id"],
-                    "action": hypothesis["diagnostic_action"],
-                    "observed_signal": signal,
-                    "supports_hypothesis": self._indicates_anomaly(
-                        request.tool, metrics, observation.success
-                    ),
-                }
-            )
+                    separators=(",", ":"),
+                )
+                coverage_record, _ = self._execute(
+                    hypothesis_id=hypothesis["hypothesis_id"],
+                    request=coverage_request,
+                    action=coverage_action,
+                    storage_path=artifacts[artifact_id].storage_path,
+                )
+                records.append(coverage_record)
         return records
+
+    def _execute(
+        self,
+        *,
+        hypothesis_id: str,
+        request: DiagnosticRequest,
+        action: str,
+        storage_path: Path,
+    ) -> tuple[DiagnosticRecord, dict[str, Any]]:
+        observation = self._engine.run(request, storage_path)
+        metrics = dict(observation.metrics)
+        metrics.pop("sample", None)
+        signal, _ = redact_secrets(
+            json.dumps(
+                {
+                    "summary": observation.summary,
+                    "metrics": metrics,
+                    "warnings": observation.warnings,
+                },
+                allow_nan=False,
+                sort_keys=True,
+                default=str,
+            )[:6000]
+        )
+        return (
+            {
+                "hypothesis_id": hypothesis_id,
+                "action": action,
+                "observed_signal": signal,
+                "supports_hypothesis": self._indicates_anomaly(
+                    request.tool, metrics, observation.success
+                ),
+            },
+            metrics,
+        )
+
+    @staticmethod
+    def _datetime_coverage_request(
+        request: DiagnosticRequest,
+        *,
+        metrics: dict[str, Any],
+    ) -> DiagnosticRequest | None:
+        if request.tool != DiagnosticTool.CHECK_DATETIME_PARSE:
+            return None
+        arguments = CheckDatetimeParseArgs.model_validate(request.arguments)
+        canonical_formats = list(CANONICAL_DATETIME_FORMAT_ORDER)
+        if arguments.accepted_formats == canonical_formats:
+            return None
+        if arguments.accepted_formats and int(metrics.get("parse_failure_count", 0)) == 0:
+            return None
+        return DiagnosticRequest(
+            tool=DiagnosticTool.CHECK_DATETIME_PARSE,
+            artifact_id=request.artifact_id,
+            arguments={
+                "column": arguments.column,
+                "accepted_formats": canonical_formats,
+            },
+            rationale=(
+                "Verify the same case-owned column against the complete bounded canonical "
+                "datetime format allowlist before permitting a repair."
+            ),
+        )
 
     @staticmethod
     def _indicates_anomaly(tool: DiagnosticTool, metrics: dict[str, Any], success: bool) -> bool:
@@ -1229,7 +1292,17 @@ class LiveDiagnosticService:
         if tool == DiagnosticTool.CHECK_TYPE_CONFORMANCE:
             return bool(metrics.get("mismatches"))
         if tool == DiagnosticTool.CHECK_DATETIME_PARSE:
-            return int(metrics.get("parse_failure_count", 0)) > 0
+            if int(metrics.get("parse_failure_count", 0)) > 0:
+                return True
+            format_results = metrics.get("format_results")
+            if not isinstance(format_results, dict):
+                return False
+            matching_formats = sum(
+                1
+                for result in format_results.values()
+                if isinstance(result, dict) and int(result.get("parse_success_count", 0)) > 0
+            )
+            return matching_formats > 1
         if tool == DiagnosticTool.INSPECT_LOG_SIGNATURES:
             return bool(metrics.get("signature_counts"))
         return any(int(value) > 0 for value in metrics.values() if isinstance(value, int))
@@ -1262,10 +1335,21 @@ def _datetime_repair_from_diagnostics(
             continue
         if not all(isinstance(item, str) for item in accepted_formats):
             continue
+        format_results = metrics.get("format_results")
+        if not isinstance(format_results, dict):
+            continue
+        proven_formats = [
+            item
+            for item in accepted_formats
+            if isinstance(format_results.get(item), dict)
+            and int(format_results[item].get("parse_success_count", 0)) > 0
+        ]
+        if not proven_formats:
+            continue
         return {
             "op": "parse_datetime",
             "column": column,
-            "accepted_formats": accepted_formats,
+            "accepted_formats": proven_formats,
             "timezone": "UTC",
             "on_error": "reject",
         }

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from data_incident_investigator.domain.causes import RootCauseCode
 from data_incident_investigator.services.cause_policy import (
     DeterministicCauseCodePolicy,
@@ -203,6 +205,74 @@ def test_independent_schema_and_datetime_signals_yield_two_canonical_causes() ->
         (schema_hypothesis["hypothesis_id"],),
         (datetime_hypothesis["hypothesis_id"],),
     ]
+
+
+def test_wrong_datetime_subset_does_not_invent_a_mixed_format_cause() -> None:
+    hypothesis = _hypothesis(
+        "hypothesis-datetime",
+        "The created_at values may use mixed timestamp formats.",
+        diagnostic_action="check_datetime_parse",
+    )
+    wrong_subset = json.dumps(
+        {
+            "metrics": {
+                "accepted_formats": ["MM/DD/YYYY hh:mm AM UTC"],
+                "format_results": {
+                    "MM/DD/YYYY hh:mm AM UTC": {
+                        "parse_failure_count": 1,
+                        "parse_success_count": 0,
+                    }
+                },
+                "parse_failure_count": 1,
+            }
+        }
+    )
+    canonical_coverage = json.dumps(
+        {
+            "metrics": {
+                "accepted_formats": ["rfc3339", "MM/DD/YYYY hh:mm AM UTC"],
+                "format_results": {
+                    "rfc3339": {
+                        "parse_failure_count": 0,
+                        "parse_success_count": 1,
+                    },
+                    "MM/DD/YYYY hh:mm AM UTC": {
+                        "parse_failure_count": 1,
+                        "parse_success_count": 0,
+                    },
+                },
+                "parse_failure_count": 0,
+            }
+        }
+    )
+
+    resolution = _resolve(
+        model_confirmed=True,
+        model_findings=[
+            ProposedCause(
+                hypothesis_id=hypothesis["hypothesis_id"],
+                cause_code=RootCauseCode.MIXED_DATETIME_FORMATS,
+            )
+        ],
+        hypotheses=[hypothesis],
+        evidence=[
+            _evidence(
+                "The created_at contract explains how mixed timestamp formats are handled, but "
+                "this source may contain only RFC3339 values."
+            )
+        ],
+        diagnostics=[
+            _diagnostic(hypothesis["hypothesis_id"], wrong_subset),
+            _diagnostic(
+                hypothesis["hypothesis_id"],
+                canonical_coverage,
+                supports_hypothesis=False,
+            ),
+        ],
+    )
+
+    assert resolution.confirmed is False
+    assert resolution.causes == ()
 
 
 def test_recovered_retry_conflict_dominates_generic_upstream_replay() -> None:

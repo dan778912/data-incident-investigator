@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
@@ -102,7 +103,15 @@ class DeterministicCauseCodePolicy:
 
         evidence_text = _evidence_text(evidence)
         diagnostic_text = _diagnostic_text(diagnostics)
-        inferred = _infer_codes(evidence_text, diagnostic_text)
+        structured_datetime_observed, observed_mixed_datetime = _datetime_format_observation(
+            diagnostics
+        )
+        inferred = _infer_codes(
+            evidence_text,
+            diagnostic_text,
+            structured_datetime_observed=structured_datetime_observed,
+            observed_mixed_datetime=observed_mixed_datetime,
+        )
         if not inferred:
             return CauseResolution(
                 confirmed=False,
@@ -185,9 +194,38 @@ def _diagnostic_text(diagnostics: Sequence[DiagnosticRecord]) -> str:
     return "\n".join(item["observed_signal"] for item in diagnostics).lower()[:100_000]
 
 
+def _datetime_format_observation(
+    diagnostics: Sequence[DiagnosticRecord],
+) -> tuple[bool, bool]:
+    """Return whether structured datetime evidence exists and proves multiple used formats."""
+
+    structured = False
+    mixed = False
+    for diagnostic in diagnostics:
+        try:
+            observed = json.loads(diagnostic["observed_signal"])
+        except (json.JSONDecodeError, TypeError):
+            continue
+        metrics = observed.get("metrics") if isinstance(observed, dict) else None
+        format_results = metrics.get("format_results") if isinstance(metrics, dict) else None
+        if not isinstance(format_results, dict):
+            continue
+        structured = True
+        matching_formats = sum(
+            1
+            for result in format_results.values()
+            if isinstance(result, dict) and int(result.get("parse_success_count", 0)) > 0
+        )
+        mixed = mixed or matching_formats > 1
+    return structured, mixed
+
+
 def _infer_codes(
     evidence_text: str,
     diagnostic_text: str,
+    *,
+    structured_datetime_observed: bool,
+    observed_mixed_datetime: bool,
 ) -> list[tuple[RootCauseCode, str]]:
     text = f"{evidence_text}\n{diagnostic_text}"
     # Dominant fail-closed and contract-version cases first.
@@ -276,17 +314,18 @@ def _infer_codes(
         "event_time",
         "timestamp format",
     )
-    mixed_datetime = (
-        datetime_evidence
+    legacy_mixed_datetime = (
+        not structured_datetime_observed
         and _any(
-            text,
+            diagnostic_text,
             "mixed datetime",
             "mixed timestamp",
             "mm/dd/yyyy",
             '"parse_failure_count": 1',
         )
-        and _any(text, "rfc3339", "datetime", "timestamp", "created_at")
+        and _any(diagnostic_text, "rfc3339", "datetime", "timestamp", "created_at")
     )
+    mixed_datetime = datetime_evidence and (observed_mixed_datetime or legacy_mixed_datetime)
     null_markers = _any(text, "null marker", "default_null", "keep_default_na", "n/a") and _any(
         text, "null", "missing"
     )

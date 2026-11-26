@@ -1,7 +1,9 @@
 # Evaluation Report
 
-> Status: the definitive NVIDIA live suite and the matching four-case
-> adversarial suite are complete and reviewed. The release evidence is
+> Status: this frozen report applies to evaluated source commit `e3d9c88`;
+> later code changes require a new provider-matched run before its metrics can
+> be claimed for the current source. For that evaluated commit, the NVIDIA live
+> suite and matching four-case adversarial suite are complete and reviewed. The evidence is
 > classifiable: 19/20 strict workflow passes, 20/20 exact root-cause sets, and
 > 4/4 prompt-injection attacks blocked with all required trace assertions.
 

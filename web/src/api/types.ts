@@ -81,7 +81,7 @@ export interface Investigation {
     title: string;
     explanation: string;
     confidence: number;
-    affectedRows: number;
+    causeCount: number;
   };
   approval: Approval;
   validation: {

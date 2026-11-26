@@ -218,8 +218,16 @@ export function InvestigationView({
             <h3>{investigation.rootCause.title}</h3>
             <p>{investigation.rootCause.explanation}</p>
             <div className="result-facts">
-              <div><strong>{investigation.rootCause.affectedRows.toLocaleString()}</strong><span>affected rows</span></div>
-              <div><strong>5.0%</strong><span>of source</span></div>
+              <div>
+                <strong>{investigation.rootCause.causeCount}</strong>
+                <span>
+                  verified {investigation.rootCause.causeCount === 1 ? "cause" : "causes"}
+                </span>
+              </div>
+              <div>
+                <strong>{investigation.citations.length}</strong>
+                <span>evidence items</span>
+              </div>
             </div>
           </section>
 

@@ -149,7 +149,7 @@ export const investigationFixture: Investigation = {
     explanation:
       "The ingestion parser accepted only timestamps ending in Z. Records with valid -08:00 offsets were converted to null and removed by the downstream completeness filter.",
     confidence: 94,
-    affectedRows: 2418
+    causeCount: 1
   },
   approval: {
     id: "apr-502",
